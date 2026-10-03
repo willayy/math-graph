@@ -1264,12 +1264,26 @@ function Index() {
   };
 
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
+  const clickedNodeRef = useRef(false);
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Re-fit the view once, after the initial layout has had time to settle
   useEffect(() => {
     if (!flow || !graph) return;
-    const t = setTimeout(() => flow.fitView({ padding: 0.2, duration: 800 }), 2500);
+    const t = setTimeout(() => {
+      if (!clickedNodeRef.current) void flow.fitView({ padding: 0.2, duration: 800 });
+    }, 2500);
     return () => clearTimeout(t);
   }, [flow, graph]);
+  useEffect(() => () => clearTimeout(focusTimerRef.current), []);
+  const focusNode = (id: string) => {
+    clickedNodeRef.current = true;
+    toggleExpand(id);
+    clearTimeout(focusTimerRef.current);
+    // Let the expanded box be measured before framing it, including on small screens.
+    focusTimerRef.current = setTimeout(() => {
+      void flow?.fitView({ nodes: [{ id }], padding: 0.18, minZoom: 0.75, maxZoom: 1.35, duration: 650 });
+    }, 120);
+  };
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -1432,7 +1446,7 @@ function Index() {
           nodes={viewNodes}
           edges={viewEdges}
           onNodesChange={handleNodesChange as OnNodesChange<Node>}
-          onNodeClick={(_, node) => toggleExpand(node.id)}
+          onNodeClick={(_, node) => focusNode(node.id)}
           onEdgeClick={(_, e) => toggleStrong(e)}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}

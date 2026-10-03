@@ -41,5 +41,5 @@
 - [x] Smooth the name-only to full-content transition and begin it further out
 - [x] Keep expanded boxes from overlapping neighboring boxes
 - [x] Start new visitors on the current settled graph layout without disturbing saved personal layouts
-- [ ] Zoom in and center a node when clicked so its text can be read
-- [ ] Make nodes in the same set cluster more reliably
+- [x] Zoom in and center a node when clicked so its text can be read
+- [x] Check set clustering: most boxes share the same Euclid set, so no force change is needed
