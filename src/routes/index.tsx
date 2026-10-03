@@ -378,6 +378,7 @@ function Index() {
           nodes={nodes}
           edges={graph.edges}
           onNodesChange={onNodesChange}
+          onNodeClick={(_, node) => toggleExpand(node.id)}
           nodeTypes={nodeTypes}
           onInit={setFlow}
           fitView
