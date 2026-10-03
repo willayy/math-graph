@@ -499,7 +499,6 @@ function buildGraph(
       edges.push(edge(r.source, r.target, r.label, r.dashed));
     }
   }
-  }
   return { nodes, edges };
 }
 
