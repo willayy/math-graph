@@ -215,7 +215,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <p
         className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
       >
-        <RichText text={item.statement} />
+        {zoom > 0.32 ? <RichText text={item.statement} /> : item.statement.replace(/\$/g, "")}
       </p>
       {item.citation && (
         <p
