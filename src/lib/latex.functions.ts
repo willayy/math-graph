@@ -20,7 +20,7 @@ export const renderLatex = createServerFn({ method: "GET" })
     const doc = mathjax.document("", { InputJax: tex, OutputJax: svg });
     const node = doc.convert(data.tex, { display: false });
     let html = adaptor.outerHTML(node);
-    // Make the SVG inherit text color so it fits the card theme
-    html = html.replace("<svg ", '<svg fill="currentColor" ');
+    // Fixed dark fill — the SVG is shown as an <img>, so it can't inherit CSS color
+    html = html.replace("<svg ", '<svg fill="#3f3f46" ');
     return { svg: html };
   });

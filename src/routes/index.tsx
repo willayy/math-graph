@@ -104,12 +104,9 @@ function Latex({ tex }: { tex: string }) {
     staleTime: Infinity,
   });
   if (!data) return <span className="text-muted-foreground">{tex}</span>;
-  return (
-    <span
-      className="inline-block align-middle [&_svg]:inline [&_svg]:h-[1.1em] [&_svg]:w-auto"
-      dangerouslySetInnerHTML={{ __html: data.svg }}
-    />
-  );
+  // Server-rendered SVG served to the node as an image
+  const src = `data:image/svg+xml;utf8,${encodeURIComponent(data.svg)}`;
+  return <img src={src} alt={tex} className="inline-block h-[1.2em] w-auto align-[-0.2em]" />;
 }
 
 function RichText({ text }: { text: string }) {
