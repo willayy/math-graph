@@ -24,6 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { SubmissionsMenu } from "@/components/SubmissionsMenu";
 import { renderLatex } from "@/lib/latex.functions";
 import { Bookmark, Pin } from "lucide-react";
+import defaultGraphLayout from "@/lib/default-graph-layout.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -904,6 +905,7 @@ function forceStep(
 const LAYOUT_KEY = "mathgraph-layout-v1";
 const COLLECTIONS_KEY = "mathgraph-collections";
 const STRONG_KEY = "mathgraph-strong-edges";
+const defaultPositions: Record<string, { x: number; y: number }> = defaultGraphLayout;
 
 function Index() {
   const [mounted, setMounted] = useState(false);
@@ -915,9 +917,10 @@ function Index() {
   );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  const initialLayoutRef = useRef(false);
   const reheatRef = useRef<() => void>(() => {});
   const handleNodesChange: typeof onNodesChange = (changes) => {
-    if (changes.some((change) => change.type === "dimensions")) reheatRef.current();
+    if (!initialLayoutRef.current && changes.some((change) => change.type === "dimensions")) reheatRef.current();
     onNodesChange(changes);
   };
   const vels = useRef(new Map<string, Vel>());
@@ -1182,12 +1185,16 @@ function Index() {
       pinnedRef.current = new Set(
         Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
       );
+      // A fresh visitor starts from the already-settled shared arrangement.
+      // Personal positions always win, including when only some nodes are saved.
+      initialLayoutRef.current = Object.keys(saved).length === 0 && graph.nodes.every((n) => defaultPositions[n.id]);
       setNodes(
         graph.nodes.map((n) => {
           const s = saved[n.id];
+          const shared = defaultPositions[n.id];
           return {
             ...n,
-            position: s ? { x: s.x, y: s.y } : n.position,
+            position: s ? { x: s.x, y: s.y } : shared ?? n.position,
             data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
           };
         }),
@@ -1219,14 +1226,19 @@ function Index() {
     if (!layoutVersion) return;
     let raf = 0;
     let wasMoving = false;
-    let alpha = 1;
+    // The bundled layout is already settled, so don't animate it into place.
+    // Dragging or expanding a card wakes the simulation again.
+    let alpha = initialLayoutRef.current ? 0 : 1;
     reheatRef.current = () => { alpha = Math.max(alpha, 0.6); };
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       if (floatingRef.current)
         setNodes((ns) => {
           if (!ns.length) return ns;
-          if (ns.some((n) => n.dragging)) alpha = Math.max(alpha, 0.5);
+          if (ns.some((n) => n.dragging)) {
+            initialLayoutRef.current = false;
+            alpha = Math.max(alpha, 0.5);
+          }
           alpha *= ALPHA_DECAY;
           const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
           const moving = next !== ns;
@@ -1250,6 +1262,7 @@ function Index() {
   }, [setNodes, simEdges, simGroups, layoutVersion]);
 
   const toggleExpand = (id: string) => {
+    initialLayoutRef.current = false;
     reheatRef.current();
     setNodes((ns) =>
       ns.map((n) =>
