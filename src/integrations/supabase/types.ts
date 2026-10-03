@@ -14,7 +14,275 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      axioms: {
+        Row: {
+          created_at: string
+          creator: string | null
+          date: string | null
+          id: string
+          name: string
+          statement: string
+        }
+        Insert: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name: string
+          statement: string
+        }
+        Update: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name?: string
+          statement?: string
+        }
+        Relationships: []
+      }
+      conjectures: {
+        Row: {
+          created_at: string
+          creator: string | null
+          date: string | null
+          id: string
+          name: string
+          statement: string
+        }
+        Insert: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name: string
+          statement: string
+        }
+        Update: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name?: string
+          statement?: string
+        }
+        Relationships: []
+      }
+      definitions: {
+        Row: {
+          created_at: string
+          creator: string | null
+          date: string | null
+          id: string
+          name: string
+          statement: string
+        }
+        Insert: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name: string
+          statement: string
+        }
+        Update: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name?: string
+          statement?: string
+        }
+        Relationships: []
+      }
+      lemmas: {
+        Row: {
+          created_at: string
+          creator: string | null
+          date: string | null
+          id: string
+          name: string
+          statement: string
+          theorem_id: string
+        }
+        Insert: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name: string
+          statement: string
+          theorem_id: string
+        }
+        Update: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name?: string
+          statement?: string
+          theorem_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_lemmas_theorems"
+            columns: ["theorem_id"]
+            isOneToOne: false
+            referencedRelation: "theorems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proofs: {
+        Row: {
+          created_at: string
+          creator: string | null
+          date: string | null
+          id: string
+          name: string
+          statement: string
+          theorem_id: string
+        }
+        Insert: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name: string
+          statement: string
+          theorem_id: string
+        }
+        Update: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name?: string
+          statement?: string
+          theorem_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_proofs_theorems"
+            columns: ["theorem_id"]
+            isOneToOne: false
+            referencedRelation: "theorems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      set_elements: {
+        Row: {
+          element_id: string
+          element_type: string
+          id: string
+          set_id: string
+        }
+        Insert: {
+          element_id: string
+          element_type: string
+          id?: string
+          set_id: string
+        }
+        Update: {
+          element_id?: string
+          element_type?: string
+          id?: string
+          set_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_set_elements_sets"
+            columns: ["set_id"]
+            isOneToOne: false
+            referencedRelation: "sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sets: {
+        Row: {
+          created_at: string
+          creator: string | null
+          date: string | null
+          description: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          description?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          description?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      theorem_uses: {
+        Row: {
+          id: string
+          theorem_id: string
+          used_id: string
+          used_type: string
+        }
+        Insert: {
+          id?: string
+          theorem_id: string
+          used_id: string
+          used_type: string
+        }
+        Update: {
+          id?: string
+          theorem_id?: string
+          used_id?: string
+          used_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_theorem_uses_theorems"
+            columns: ["theorem_id"]
+            isOneToOne: false
+            referencedRelation: "theorems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      theorems: {
+        Row: {
+          created_at: string
+          creator: string | null
+          date: string | null
+          id: string
+          name: string
+          statement: string
+        }
+        Insert: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name: string
+          statement: string
+        }
+        Update: {
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          name?: string
+          statement?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
