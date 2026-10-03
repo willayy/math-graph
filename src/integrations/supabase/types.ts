@@ -142,47 +142,6 @@ export type Database = {
         }
         Relationships: []
       }
-      lemmas: {
-        Row: {
-          citation: string | null
-          created_at: string
-          creator: string | null
-          date: string | null
-          id: string
-          name: string
-          statement: string
-          theorem_id: string
-        }
-        Insert: {
-          citation?: string | null
-          created_at?: string
-          creator?: string | null
-          date?: string | null
-          id?: string
-          name: string
-          statement: string
-          theorem_id: string
-        }
-        Update: {
-          citation?: string | null
-          created_at?: string
-          creator?: string | null
-          date?: string | null
-          id?: string
-          name?: string
-          statement?: string
-          theorem_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "fk_lemmas_theorems"
-            columns: ["theorem_id"]
-            isOneToOne: false
-            referencedRelation: "theorems"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       profiles: {
         Row: {
           created_at: string
