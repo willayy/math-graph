@@ -36,3 +36,4 @@
 - [ ] Real names visible on every account/action
 - [ ] About page: what MathGraph is, how to contribute
 - [ ] Canonical-only toggle + 'show canonical trace' button in expanded box
+- [ ] Rename "weak" lines to "non-canonical"
