@@ -644,8 +644,8 @@ const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
 const UNTANGLE = 4; // gentle push between crossing edges
-const SET_PULL = 0.002; // pull toward the centre of each set the box belongs to
-const KIND_PULL = 0.0008; // weaker pull toward the centre of the box's kind
+const SET_PULL = 0.0022; // pull toward the centre of each set the box belongs to
+const KIND_PULL = 0.00088; // weaker pull toward the centre of the box's kind
 const ALPHA_DECAY = 0.985; // "temperature" cools every frame so the graph always settles
 const ALPHA_MIN = 0.004;
 
