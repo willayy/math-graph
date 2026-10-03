@@ -363,7 +363,7 @@ function forceStep(
         dx = Math.random() - 0.5;
         dy = Math.random() - 0.5;
       }
-      const dist = Math.hypot(dx, dy);
+      const dist = Math.max(Math.hypot(dx, dy), 20); // clamp: avoids huge forces at tiny distances
       if (dist > REPULSE_RANGE) continue;
       let f = REPULSION / (dist * dist);
       const overlapX = NODE_W + 24 - Math.abs(dx);
@@ -416,8 +416,18 @@ function forceStep(
       vx = (vx / sp) * MAX_SPEED;
       vy = (vy / sp) * MAX_SPEED;
     }
+    // Dead zone: kill tiny residual velocities so boxes stop dead instead of
+    // oscillating around equilibrium (the "wobble").
+    if (sp < REST_SPEED) {
+      vels.set(n.id, { vx: 0, vy: 0 });
+      return n;
+    }
+    // Extra braking at low speed so motion decays smoothly into the dead zone
+    if (sp < 1.5) {
+      vx *= 0.7;
+      vy *= 0.7;
+    }
     vels.set(n.id, { vx, vy });
-    if (sp < REST_SPEED) return n;
     moving = true;
     return { ...n, position: { x: n.position.x + vx, y: n.position.y + vy } };
   });
