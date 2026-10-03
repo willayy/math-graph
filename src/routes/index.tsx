@@ -1008,7 +1008,8 @@ function Index() {
                 setActiveId(e.target.value);
                 if (!e.target.value) setShowOnly(false);
               }}
-              className="w-full appearance-none rounded-md border border-border bg-background py-1.5 pl-3 pr-9 text-left text-foreground shadow-sm"
+              style={{ textAlignLast: "center" }}
+              className="w-full appearance-none rounded-md border border-border bg-background px-9 py-1.5 text-center text-foreground shadow-sm"
             >
               <option value="">No collection</option>
               {collections.map((c) => (
