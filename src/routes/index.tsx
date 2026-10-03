@@ -18,6 +18,7 @@ import {
   type OnNodesChange,
   type ReactFlowInstance,
   useStore,
+  ViewportPortal,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
@@ -158,7 +159,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
   const zoom = useStore((st) => st.transform[2]);
   // Begin revealing detail while still zoomed out; keep the same box and
   // handles mounted throughout so changing modes never jolts the layout.
-  const detailOpacity = Math.max(0, Math.min(1, (zoom - 0.32) / 0.2));
+  const detailOpacity = clamp01((zoom - 0.32) / 0.2);
   return (
     <div
       className={`relative cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
@@ -282,6 +283,178 @@ function Card({ data }: NodeProps<Node<CardData>>) {
 }
 
 const nodeTypes = { card: Card };
+
+const SET_OVERVIEW_ZOOM = 0.12;
+const SET_MARGIN = 55;
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const nodeWidth = (node: Node<CardData>) => node.measured?.width ?? (node.data.expanded ? 340 : NODE_W);
+const nodeHeight = (node: Node<CardData>) => node.measured?.height ?? NODE_H;
+
+// A convex outline follows the actual member boxes instead of enclosing unrelated
+// nodes in a large rectangular bounding box.
+function setHull(points: { x: number; y: number }[]) {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (a: typeof points[number], b: typeof points[number], c: typeof points[number]) =>
+    (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  const lower: typeof points = [];
+  for (const p of sorted) {
+    while (lower.length > 1 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: typeof points = [];
+  for (const p of sorted.reverse()) {
+    while (upper.length > 1 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+// Move the smaller, freely movable set as a unit only when two padded hulls
+// actually intersect. This preserves the spacing inside each set and leaves
+// saved layouts untouched when their outlines are already separate.
+function separateSetOutlines(
+  nodes: Node<CardData>[],
+  members: { set_id: string; element_id: string }[],
+  pinned: Set<string>,
+) {
+  const groups = new Map<string, Set<string>>();
+  for (const { set_id, element_id } of members) {
+    if (!groups.has(set_id)) groups.set(set_id, new Set());
+    groups.get(set_id)?.add(element_id);
+  }
+  const hullFor = (ids: Set<string>, list: Node<CardData>[]) => setHull(list.flatMap((node) => {
+    if (!ids.has(node.id)) return [];
+    const { x, y } = node.position;
+    const right = x + nodeWidth(node) + SET_MARGIN;
+    const bottom = y + nodeHeight(node) + SET_MARGIN;
+    return [
+      { x: x - SET_MARGIN, y: y - SET_MARGIN }, { x: right, y: y - SET_MARGIN },
+      { x: right, y: bottom }, { x: x - SET_MARGIN, y: bottom },
+    ];
+  }));
+  const entries = [...groups.entries()];
+  let result = nodes;
+  for (let pass = 0; pass < entries.length; pass++) {
+    let moved = false;
+    for (let i = 0; i < entries.length; i++) for (let j = i + 1; j < entries.length; j++) {
+      const [aId, a] = entries[i]!;
+      const [bId, b] = entries[j]!;
+      const aHull = hullFor(a, result), bHull = hullFor(b, result);
+      if (aHull.length < 3 || bHull.length < 3) continue;
+      const axes = [aHull, bHull].flatMap((hull) => hull.map((point, k) => {
+        const next = hull[(k + 1) % hull.length]!;
+        const dx = next.x - point.x, dy = next.y - point.y;
+        const length = Math.hypot(dx, dy) || 1;
+        return { x: -dy / length, y: dx / length };
+      }));
+      let separation: { x: number; y: number; distance: number } | null = null;
+      let intersects = true;
+      for (const axis of axes) {
+        const projection = (hull: typeof aHull) => {
+          const values = hull.map((point) => point.x * axis.x + point.y * axis.y);
+          return { min: Math.min(...values), max: Math.max(...values) };
+        };
+        const pa = projection(aHull), pb = projection(bHull);
+        const forward = pa.max - pb.min, backward = pb.max - pa.min;
+        if (forward <= 0 || backward <= 0) { intersects = false; break; }
+        const distance = Math.min(forward, backward);
+        if (!separation || distance < separation.distance)
+          separation = { x: axis.x * (forward <= backward ? 1 : -1), y: axis.y * (forward <= backward ? 1 : -1), distance };
+      }
+      if (!intersects || !separation) continue;
+      const movable = (ids: Set<string>, other: Set<string>) =>
+        [...ids].every((id) => !pinned.has(id) && !other.has(id));
+      const candidates = [
+        { id: aId, ids: a, sign: -1, allowed: movable(a, b) },
+        { id: bId, ids: b, sign: 1, allowed: movable(b, a) },
+      ].filter((candidate) => candidate.allowed).sort((left, right) => left.ids.size - right.ids.size);
+      const choice = candidates[0];
+      if (!choice) continue;
+      const { x, y, distance } = separation;
+      result = result.map((node) => choice.ids.has(node.id) ? {
+        ...node,
+        position: { x: node.position.x + x * (distance + 12) * choice.sign,
+          y: node.position.y + y * (distance + 12) * choice.sign },
+      } : node);
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return result;
+}
+
+function SetOutlines({
+  nodes,
+  sets,
+  members,
+  visible,
+}: {
+  nodes: Node<CardData>[];
+  sets: { id: string; name: string }[];
+  members: { set_id: string; element_id: string }[];
+  visible: Set<string> | null;
+}) {
+  const zoom = useStore((state) => state.transform[2]);
+  const detailOpacity = clamp01((zoom - 0.095) / 0.05);
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const outlines = useMemo(() => sets.map((set) => {
+    const corners: { x: number; y: number }[] = [];
+    for (const member of members) {
+      if (member.set_id !== set.id || (visible && !visible.has(member.element_id))) continue;
+      const node = nodeById.get(member.element_id);
+      if (!node) continue;
+      const { x, y } = node.position;
+      const width = nodeWidth(node);
+      const height = nodeHeight(node);
+      corners.push(
+        { x: x - SET_MARGIN, y: y - SET_MARGIN },
+        { x: x + width + SET_MARGIN, y: y - SET_MARGIN },
+        { x: x + width + SET_MARGIN, y: y + height + SET_MARGIN },
+        { x: x - SET_MARGIN, y: y + height + SET_MARGIN },
+      );
+    }
+    if (!corners.length) return null;
+    const hull = setHull(corners);
+    const left = Math.min(...hull.map((p) => p.x));
+    const right = Math.max(...hull.map((p) => p.x));
+    const top = Math.min(...hull.map((p) => p.y));
+    const bottom = Math.max(...hull.map((p) => p.y));
+    return { ...set, hull, left, right, top, bottom };
+  }).filter((outline): outline is NonNullable<typeof outline> => outline !== null), [sets, members, visible, nodeById]);
+
+  return (
+    <ViewportPortal>
+      {outlines.map((set) => (
+        <div key={set.id} className="pointer-events-none absolute left-0 top-0">
+          <svg className="absolute left-0 top-0 overflow-visible" width="1" height="1" aria-hidden="true">
+            <path
+              d={`M ${set.hull.map((p) => `${p.x} ${p.y}`).join(" L ")} Z`}
+              fill="none"
+              stroke="var(--muted-foreground)"
+              strokeWidth={Math.max(2, 1.1 / zoom)}
+              strokeDasharray={`${Math.max(12, 8 / zoom)} ${Math.max(10, 6 / zoom)}`}
+              opacity="0.6"
+            />
+          </svg>
+           {(["detail", "overview"] as const).map((level) => (
+             <span
+               key={level}
+               className={`absolute block whitespace-nowrap bg-background px-2 text-center font-semibold leading-tight text-foreground ${level === "overview" ? "text-lg" : "text-sm"}`}
+               style={{
+                 left: (set.left + set.right) / 2,
+                 top: level === "overview" ? (set.top + set.bottom) / 2 : set.top - 18 / zoom,
+                 transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+                 opacity: level === "overview" ? 1 - detailOpacity : detailOpacity,
+               }}
+             >
+               {set.name}
+             </span>
+           ))}
+        </div>
+      ))}
+    </ViewportPortal>
+  );
+}
 
 // Floating edge: the connection points are recomputed from the nodes' current
 // rectangles on every render, so each line leaves the box on the side facing
@@ -647,6 +820,8 @@ const UNTANGLE = 4; // gentle push between crossing edges
 const SET_PULL = 0.00242; // pull toward the centre of each set the box belongs to
 const KIND_PULL = 0.00088; // weaker pull toward the centre of the box's kind
 const INTERSET_REPULSION = 0.95; // slightly less push between boxes in different sets
+const SET_CENTER_SPACING = 2200; // keep set centres distinct without pushing them too far apart
+const SET_CENTER_PUSH = 0.008;
 const ALPHA_DECAY = 0.985; // "temperature" cools every frame so the graph always settles
 const ALPHA_MIN = 0.004;
 
@@ -681,10 +856,8 @@ function forceStep(
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
   const fy = new Float64Array(nodes.length);
-  const width = (n: Node<CardData>) => n.measured?.width ?? (n.data.expanded ? 340 : NODE_W);
-  const height = (n: Node<CardData>) => n.measured?.height ?? NODE_H;
-  const cx = (n: Node<CardData>) => n.position.x + width(n) / 2;
-  const cy = (n: Node<CardData>) => n.position.y + height(n) / 2;
+  const cx = (n: Node<CardData>) => n.position.x + nodeWidth(n) / 2;
+  const cy = (n: Node<CardData>) => n.position.y + nodeHeight(n) / 2;
 
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
@@ -705,8 +878,8 @@ function forceStep(
       const setsB = groups.get(b.id)?.sets ?? [];
       if (setsA.length && setsB.length && !setsA.some((set) => setsB.includes(set)))
         f *= INTERSET_REPULSION;
-      const overlapX = (width(a) + width(b)) / 2 + 60 - Math.abs(dx);
-      const overlapY = (height(a) + height(b)) / 2 + 60 - Math.abs(dy);
+      const overlapX = (nodeWidth(a) + nodeWidth(b)) / 2 + 60 - Math.abs(dx);
+      const overlapY = (nodeHeight(a) + nodeHeight(b)) / 2 + 60 - Math.abs(dy);
       if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.4;
       const ux = dx / dist;
       const uy = dy / dist;
@@ -745,6 +918,27 @@ function forceStep(
     pull("k:" + g.kind, KIND_PULL);
     g.sets.forEach((s) => pull("s:" + s, SET_PULL));
   });
+
+  // Set centres have their own separation force. Shared-member sets cannot be
+  // split cleanly, so only exclusively owned nodes receive this group push.
+  const setCentres = [...centres.entries()].filter(([key]) => key.startsWith("s:"));
+  for (let i = 0; i < setCentres.length; i++) for (let j = i + 1; j < setCentres.length; j++) {
+    const [aKey, a] = setCentres[i]!;
+    const [bKey, b] = setCentres[j]!;
+    const dx = b.x / b.n - a.x / a.n, dy = b.y / b.n - a.y / a.n;
+    const distance = Math.hypot(dx, dy);
+    if (distance >= SET_CENTER_SPACING) continue;
+    const ux = distance > 1 ? dx / distance : 1;
+    const uy = distance > 1 ? dy / distance : 0;
+    const push = Math.min(SET_CENTER_SPACING - distance, 500) * SET_CENTER_PUSH;
+    nodes.forEach((n, index) => {
+      const owned = groups.get(n.id)?.sets ?? [];
+      const side = owned.includes(aKey.slice(2)) && !owned.includes(bKey.slice(2)) ? -1
+        : owned.includes(bKey.slice(2)) && !owned.includes(aKey.slice(2)) ? 1 : 0;
+      fx[index]! += ux * push * side;
+      fy[index]! += uy * push * side;
+    });
+  }
 
   // Untangle: any two crossing edges push their endpoints apart along the
   // line between their midpoints, so the layout works toward planarity.
@@ -826,13 +1020,14 @@ function forceStep(
   // Separate actual measured rectangles, including expanded cards. Repeat
   // after edge clearance too, since moving an edge can crowd a neighbor.
   const GAP = 50;
-  const separateBoxes = (iterations: number) => { for (let iter = 0; iter < iterations; iter++) {
-    for (let i = 0; i < next.length; i++) {
-      for (let j = i + 1; j < next.length; j++) {
+  const separateBoxes = (iterations: number) => {
+    for (let iter = 0; iter < iterations; iter++) {
+      for (let i = 0; i < next.length; i++) {
+        for (let j = i + 1; j < next.length; j++) {
         const a = next[i]!;
         const b = next[j]!;
-        const ox = (width(a) + width(b)) / 2 + GAP - Math.abs(cx(b) - cx(a));
-        const oy = (height(a) + height(b)) / 2 + GAP - Math.abs(cy(b) - cy(a));
+        const ox = (nodeWidth(a) + nodeWidth(b)) / 2 + GAP - Math.abs(cx(b) - cx(a));
+        const oy = (nodeHeight(a) + nodeHeight(b)) / 2 + GAP - Math.abs(cy(b) - cy(a));
         if (ox <= 0.5 || oy <= 0.5) continue;
         const fa = a.dragging || pinned.has(a.id) ? 0 : 1;
         const fb = b.dragging || pinned.has(b.id) ? 0 : 1;
@@ -843,9 +1038,10 @@ function forceStep(
         if (fa) next[i] = { ...a, position: { x: a.position.x - sx * push * fa, y: a.position.y - sy * push * fa } };
         if (fb) next[j] = { ...b, position: { x: b.position.x + sx * push * fb, y: b.position.y + sy * push * fb } };
         moving = true;
+        }
       }
     }
-  }};
+  };
   separateBoxes(2);
   // Edge clearance: a box may not sit on a line it isn't part of. Push the box
   // off the line (and the line's ends slightly the other way), position-based.
@@ -870,7 +1066,7 @@ function forceStep(
       if (d < 0.01) { nx = -vy; ny = vx; d = Math.hypot(nx, ny); }
       nx /= d; ny /= d;
       // EDGE_BUFFER: a no-go corridor on each side of every line.
-      const need = Math.abs(nx) * width(n) / 2 + Math.abs(ny) * height(n) / 2 + EDGE_BUFFER;
+       const need = Math.abs(nx) * nodeWidth(n) / 2 + Math.abs(ny) * nodeHeight(n) / 2 + EDGE_BUFFER;
       const dd = Math.hypot(cx(n) - px, cy(n) - py);
       if (dd >= need - 0.5) continue;
       const push = (need - dd) * 0.525;
@@ -1006,6 +1202,13 @@ function Index() {
   // canonical lines reachable from one box (in both directions).
   const [strongEdges, setStrongEdges] = useState<string[]>([]);
   const [canonicalOnly, setCanonicalOnly] = useState(false);
+  const [setOverview, setSetOverview] = useState(false);
+  const [filterSet, setFilterSet] = useState("");
+  const [filterKind, setFilterKind] = useState("");
+  const setMemberIds = useMemo(
+    () => new Set(data?.setElements.filter((member) => member.set_id === filterSet).map((member) => member.element_id) ?? []),
+    [data, filterSet],
+  );
   const [traceId, setTraceId] = useState<string | null>(null);
   const trace = useMemo(() => {
     if (!traceId || !graph) return null;
@@ -1039,8 +1242,16 @@ function Index() {
       }
       base = base ? new Set([...base].filter((x) => connected.has(x))) : connected;
     }
+    if (filterSet || filterKind) {
+      const filtered = new Set(
+        (data?.items ?? [])
+          .filter((item) => (!filterSet || setMemberIds.has(item.id)) && (!filterKind || item.kind === filterKind))
+          .map((item) => item.id),
+      );
+      base = base ? new Set([...base].filter((id) => filtered.has(id))) : filtered;
+    }
     return base;
-  }, [active, showOnly, trace, canonicalOnly, graph, strongEdges]);
+  }, [active, showOnly, trace, canonicalOnly, graph, strongEdges, filterSet, filterKind, setMemberIds, data]);
   const viewNodes = useMemo(
     () =>
       nodes.map((n) => ({
@@ -1185,8 +1396,8 @@ function Index() {
       // A fresh visitor starts from the already-settled shared arrangement.
       // Personal positions always win, including when only some nodes are saved.
       initialLayoutRef.current = Object.keys(saved).length === 0 && graph.nodes.every((n) => defaultPositions[n.id]);
-      setNodes(
-        graph.nodes.map((n) => {
+       setNodes(separateSetOutlines(
+         graph.nodes.map((n) => {
           const s = saved[n.id];
           const shared = defaultPositions[n.id];
           return {
@@ -1194,15 +1405,14 @@ function Index() {
             position: s ? { x: s.x, y: s.y } : shared ?? n.position,
             data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
           };
-        }),
-      );
+         }), data?.setElements ?? [], pinnedRef.current));
       vels.current.clear();
       setLayoutVersion((v) => v + 1);
     })();
     return () => {
       cancelled = true;
     };
-  }, [graph, setNodes, authReady, userId]);
+   }, [graph, data, setNodes, authReady, userId]);
 
   const saveLayoutRef = useRef(saveLayout);
   saveLayoutRef.current = saveLayout;
@@ -1273,12 +1483,12 @@ function Index() {
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Re-fit the view once, after the initial layout has had time to settle
   useEffect(() => {
-    if (!flow || !graph) return;
+    if (!flow || !graph || !layoutVersion) return;
     const t = setTimeout(() => {
-      if (!clickedNodeRef.current) void flow.fitView({ padding: 0.2, duration: 800 });
+      if (!clickedNodeRef.current) void flow.fitView({ padding: 0.2, duration: 800, includeHiddenNodes: true });
     }, 2500);
     return () => clearTimeout(t);
-  }, [flow, graph]);
+  }, [flow, graph, layoutVersion]);
   useEffect(() => () => clearTimeout(focusTimerRef.current), []);
   const focusNode = (id: string) => {
     clickedNodeRef.current = true;
@@ -1289,8 +1499,8 @@ function Index() {
       const node = flow?.getNode(id);
       if (!node || !flow) return;
       const compact = window.innerWidth < 768;
-      const height = node.measured?.height ?? NODE_H;
-      const width = node.measured?.width ?? (node.data['expanded'] ? 340 : NODE_W);
+      const height = nodeHeight(node as Node<CardData>);
+      const width = nodeWidth(node as Node<CardData>);
       const availableHeight = window.innerHeight - (compact ? 280 : 100);
       const zoom = Math.max(0.65, Math.min(compact ? 1 : 1.15, availableHeight / height, (window.innerWidth - 48) / width));
       // On small screens the controls occupy the top, so frame the card below them.
@@ -1392,6 +1602,20 @@ function Index() {
             <input type="checkbox" checked={canonicalOnly} onChange={(e) => setCanonicalOnly(e.target.checked)} className="accent-foreground" />
             Canonical relations only
           </label>
+          <div className="flex flex-col gap-1 rounded-md border border-border bg-background p-2 shadow-sm">
+            <label htmlFor="set-filter" className="text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
+            <select id="set-filter" value={filterSet} onChange={(e) => setFilterSet(e.target.value)} className="w-full bg-background text-foreground outline-none">
+              <option value="">All sets</option>
+              {data?.sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
+            </select>
+            <label htmlFor="kind-filter" className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">Node type</label>
+            <select id="kind-filter" value={filterKind} onChange={(e) => setFilterKind(e.target.value)} className="w-full bg-background text-foreground outline-none">
+              <option value="">All types</option>
+              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map((kind) => (
+                <option key={kind} value={kind}>{kind.replace(/^./, (letter) => letter.toUpperCase())}</option>
+              ))}
+            </select>
+          </div>
           {traceId && (
             <button onClick={() => setTraceId(null)} className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm hover:bg-muted">
               Clear canonical trace
@@ -1458,6 +1682,7 @@ function Index() {
       )}
       {mounted && graph && (
         <ReactFlow
+          className={setOverview ? "set-overview" : ""}
           onlyRenderVisibleElements
           nodes={viewNodes}
           edges={viewEdges}
@@ -1467,12 +1692,14 @@ function Index() {
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onInit={setFlow}
+          onMove={(_, viewport) => setSetOverview(viewport.zoom <= SET_OVERVIEW_ZOOM)}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.2}
+          fitViewOptions={{ padding: 0.2, includeHiddenNodes: true }}
+          minZoom={0.06}
           nodesConnectable={false}
           proOptions={{ hideAttribution: true }}
         >
+          {data && <SetOutlines nodes={nodes} sets={data.sets} members={data.setElements} visible={visible} />}
           <Background color="var(--border)" gap={24} />
           <Controls showInteractive={false} />
         </ReactFlow>
