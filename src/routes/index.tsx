@@ -53,7 +53,7 @@ type CardData = { item: Item };
 const NODE_W = 260;
 const COL_GAP = 120;
 const ROW_GAP = 40;
-const NODE_H = 130;
+const NODE_H = 155;
 
 async function fetchGraph() {
   const tables = [
