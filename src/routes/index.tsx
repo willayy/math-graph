@@ -1729,6 +1729,12 @@ function Index() {
           nodes={viewNodes}
           edges={viewEdges}
           onNodesChange={handleNodesChange as OnNodesChange<Node>}
+          onNodeDragStop={() => {
+            setNodes((current) => {
+              setTimeout(() => saveLayoutRef.current(current), 0);
+              return current;
+            });
+          }}
           onNodeClick={(_, node) => focusNode(node.id)}
           onEdgeClick={(_, e) => toggleStrong(e)}
           nodeTypes={nodeTypes}

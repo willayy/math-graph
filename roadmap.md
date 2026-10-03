@@ -10,7 +10,7 @@
 - [x] Color-code nodes by kind
 - [x] Pin nodes + persist saved graph layout across visits
 - [x] Group relations by type in expanded card; capitalize Type field
-- [x] Toggle to disable the floating physics
+- [x] Replace the floating toggle with automatic settling and frozen positions
 - [x] Prevent edge crossings (untangle force in sim)
 - [x] Remove Goldbach Conjecture
 - [x] Add all Euclid postulates + common notions as axioms
@@ -52,6 +52,6 @@
 - [x] Give each set its own center of gravity to hold its nodes together
 - [x] Bring the sets a little closer again without overlapping their dashed outlines or distant-zoom names
 - [ ] Bring in the menu draft changes
-- [ ] Prevent graph nodes from overlapping lines
-- [ ] Settle initial positions using the simulation, then freeze them and remove the floating toggle
-- [ ] Add a reset positions button
+- [x] Prevent graph nodes from overlapping lines
+- [x] Settle initial positions using the simulation, then freeze them and remove the floating toggle
+- [x] Add a reset positions button
