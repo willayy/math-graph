@@ -8,6 +8,7 @@ import {
   Handle,
   Position,
   MarkerType,
+  useNodesState,
   type Node,
   type Edge,
   type NodeProps,
@@ -208,11 +209,71 @@ function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }
   return { nodes, edges };
 }
 
+// Gentle physics: nodes repel when their boxes overlap, with damped velocity
+// so they feel slightly inert rather than snapping.
+type SimNode = Node<CardData> & { vx?: number; vy?: number };
+
+function repelStep(nodes: SimNode[]): SimNode[] {
+  const next = nodes.map((n) => ({ ...n, vx: n.vx ?? 0, vy: n.vy ?? 0 }));
+  let anyOverlap = false;
+  for (let i = 0; i < next.length; i++) {
+    for (let j = i + 1; j < next.length; j++) {
+      const a = next[i]!;
+      const b = next[j]!;
+      const acx = a.position.x + NODE_W / 2;
+      const acy = a.position.y + NODE_H / 2;
+      const bcx = b.position.x + NODE_W / 2;
+      const bcy = b.position.y + NODE_H / 2;
+      const dx = bcx - acx;
+      const dy = bcy - acy;
+      const overlapX = NODE_W + 24 - Math.abs(dx);
+      const overlapY = NODE_H + 24 - Math.abs(dy);
+      if (overlapX > 0 && overlapY > 0) {
+        anyOverlap = true;
+        const push = 0.06;
+        if (overlapX < overlapY) {
+          const f = overlapX * push * (dx >= 0 ? 1 : -1);
+          a.vx -= f;
+          b.vx += f;
+        } else {
+          const f = overlapY * push * (dy >= 0 ? 1 : -1);
+          a.vy -= f;
+          b.vy += f;
+        }
+      }
+    }
+  }
+  if (!anyOverlap) return nodes;
+  const damping = 0.82;
+  return next.map((n) => ({
+    ...n,
+    vx: n.vx * damping,
+    vy: n.vy * damping,
+    position: { x: n.position.x + n.vx, y: n.position.y + n.vy },
+  }));
+}
+
 function Index() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
   const graph = useMemo(() => (data ? buildGraph(data.items, data.uses) : null), [data]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<SimNode>([]);
+  useEffect(() => {
+    if (graph) setNodes(graph.nodes as SimNode[]);
+  }, [graph, setNodes]);
+
+  // Animation loop: keep nudging while any boxes overlap
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      setNodes((ns) => repelStep(ns));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [setNodes]);
+
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
