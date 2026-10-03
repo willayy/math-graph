@@ -27,3 +27,6 @@
 - [x] More space between boxes
 - [x] Hide connection dots on boxes
 - [x] Boxes can't sit on top of lines
+- [x] Distinct arrowheads per relation + legend; canonical = one proof per theorem, no definitions/lemmas
+- [x] Collections dropdown menu with container (lists collections, new/show-only/delete)
+- [x] Line styles added to the bottom legend

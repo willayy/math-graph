@@ -7,7 +7,6 @@ import {
   Controls,
   Handle,
   Position,
-  MarkerType,
   BaseEdge,
   getBezierPath,
   useInternalNode,
@@ -314,6 +313,138 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
 
 const edgeTypes = { floating: FloatingEdge };
 
+// Collections dropdown: a button that opens a panel listing every collection
+// (with its size and a checkmark on the active one) plus the actions that used
+// to be separate buttons — new, show-only, delete.
+function CollectionsMenu(props: {
+  collections: Collection[];
+  activeId: string;
+  activeName: string | undefined;
+  showOnly: boolean;
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  onSelect: (id: string) => void;
+  onToggleShowOnly: () => void;
+  onNew: () => void;
+  onDelete: () => void;
+}) {
+  const { open, setOpen, collections, activeId, activeName, showOnly } = props;
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+      >
+        <span className="truncate">{activeName ?? "Collections"}</span>
+        <svg
+          className={`pointer-events-none h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-full min-w-52 overflow-hidden rounded-md border border-border bg-background shadow-md">
+          <p className="border-b border-border px-3 pb-1.5 pt-2.5 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Collections
+          </p>
+          <div className="max-h-48 overflow-y-auto py-1">
+            <button
+              onClick={() => props.onSelect("")}
+              className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-muted"
+            >
+              <span className={activeId ? "text-muted-foreground" : "font-medium"}>No collection</span>
+              {!activeId && <CheckIcon />}
+            </button>
+            {collections.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => props.onSelect(c.id)}
+                className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
+              >
+                <span className={`truncate ${c.id === activeId ? "font-medium" : ""}`}>{c.name}</span>
+                <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                  {c.ids.length}
+                  {c.id === activeId && <CheckIcon />}
+                </span>
+              </button>
+            ))}
+            {collections.length === 0 && (
+              <p className="px-3 py-1.5 text-xs text-muted-foreground">No collections yet.</p>
+            )}
+          </div>
+          <div className="border-t border-border py-1">
+            <button
+              onClick={props.onNew}
+              className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+            >
+              + New collection
+            </button>
+            {activeId && (
+              <>
+                <button
+                  onClick={props.onToggleShowOnly}
+                  className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+                >
+                  {showOnly ? "Show all nodes" : "Show only this collection"}
+                </button>
+                <button
+                  onClick={props.onDelete}
+                  className="w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted"
+                >
+                  Delete collection
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+// Arrowheads per relation: open chevron = used by, filled square (QED) = proved
+// by, hollow circle = has lemma. auto-start-reverse lets them serve as start heads.
+function EdgeMarkers() {
+  const common = {
+    markerUnits: "userSpaceOnUse" as const,
+    orient: "auto-start-reverse",
+    markerWidth: 22,
+    markerHeight: 22,
+    viewBox: "-11 -11 22 22",
+    refX: 0,
+    refY: 0,
+  };
+  return (
+    <svg width="0" height="0" className="absolute" style={{ color: "var(--foreground)" }} aria-hidden>
+      <defs>
+        <marker id="mg-uses" {...common} refX={0}>
+          <path d="M -10 -7 L 0 0 L -10 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        </marker>
+        <marker id="mg-proof" {...common} refX={0}>
+          <rect x="-11" y="-5.5" width="11" height="11" fill="currentColor" />
+        </marker>
+        <marker id="mg-lemma" {...common} refX={0}>
+          <circle cx="-6" cy="0" r="5" fill="var(--background)" stroke="currentColor" strokeWidth="1.8" />
+        </marker>
+      </defs>
+    </svg>
+  );
+}
+
 function buildGraph(
   items: Item[],
   uses: { theorem_id: string; used_id: string }[],
@@ -429,15 +560,18 @@ function buildGraph(
     });
   }
 
-  const arrow = { type: MarkerType.ArrowClosed, color: "currentColor", width: 26, height: 26 };
-  const edge = (source: string, target: string, label: string, dashed = false, twoWay = false): Edge => ({
+  // Each relation type gets its own arrowhead (SVG markers defined in EdgeMarkers).
+  const markerFor = (label: string) =>
+    label === "has proof" ? "mg-proof" : label === "has lemma" ? "mg-lemma" : "mg-uses";
+  const edge = (source: string, target: string, label: string, dashed = false, startLabel?: string): Edge => ({
     id: `${source}-${target}`,
     source,
     target,
     type: "floating", // anchors recomputed each frame: leaves the box on the facing side
     label,
-    markerEnd: arrow,
-    ...(twoWay ? { markerStart: arrow } : {}),
+    data: { relation: label },
+    markerEnd: markerFor(label),
+    ...(startLabel ? { markerStart: markerFor(startLabel) } : {}),
     style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: dashed ? "4 4" : undefined },
   });
   // Collect all relations, then merge back-and-forth pairs into a single
@@ -458,7 +592,9 @@ function buildGraph(
       merged.add(fwd);
       merged.add(bwd);
       edges.push({
-        ...edge(r.source, r.target, `${r.label} / ${back.label}`, r.dashed && back.dashed, true),
+        ...edge(r.source, r.target, `${r.label} / ${back.label}`, r.dashed && back.dashed, back.label),
+        markerEnd: markerFor(r.label),
+        data: { relation: "both" },
         id: `${fwd}--both`,
       });
     } else {
@@ -797,6 +933,7 @@ function Index() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [showOnly, setShowOnly] = useState(false);
+  const [collOpen, setCollOpen] = useState(false);
   const active = collections.find((c) => c.id === activeId) ?? null;
   const updateCollections = (next: Collection[]) => {
     setCollections(next);
@@ -838,19 +975,25 @@ function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nodes, visible, active, collections],
   );
-  // Strong edges: canonical connections. Each node touches at most one.
+  // Strong edges: canonical connections. A theorem has exactly one canonical
+  // proof; "used by" and lemma links can be canonical many times over.
   const [strongEdges, setStrongEdges] = useState<string[]>([]);
   const toggleStrong = (e: Edge) => {
-    // Definition edges are always dotted and can never be canonical.
-    if (graph?.nodes.find((n) => n.id === e.source)?.data.item.kind === "definition") return;
+    // Definition edges are always dotted, and lemmas are never canonical
+    // results — only theorems and proofs can carry the canonical mark.
+    const kindOf = (id: string) => graph?.nodes.find((n) => n.id === id)?.data.item.kind;
+    if (kindOf(e.source) === "definition" || kindOf(e.source) === "lemma" || kindOf(e.target) === "lemma") return;
     const isStrong = strongEdges.includes(e.id);
     const ends = (id: string) => graph?.edges.find((x) => x.id === id);
+    const isProof = (x?: Edge) => (x?.data as { relation?: string } | undefined)?.relation === "has proof";
     const next = isStrong
       ? strongEdges.filter((x) => x !== e.id)
       : [
           ...strongEdges.filter((x) => {
+            if (!isProof(e)) return true;
             const o = ends(x);
-            return !o || ![o.source, o.target].some((n) => n === e.source || n === e.target);
+            // Only one canonical proof per theorem
+            return !o || !(isProof(o) && o.source === e.source);
           }),
           e.id,
         ];
@@ -1111,57 +1254,28 @@ function Index() {
           >
             {floating ? "Disable floating" : "Enable floating"}
           </button>
-          <div className="relative">
-            <select
-              value={activeId}
-              onChange={(e) => {
-                setActiveId(e.target.value);
-                if (!e.target.value) setShowOnly(false);
-              }}
-              style={{ textAlignLast: "center" }}
-              className="w-full appearance-none rounded-md border border-border bg-background px-9 py-1.5 text-center text-foreground shadow-sm"
-            >
-              <option value="">No collection</option>
-              {collections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.ids.length})
-                </option>
-              ))}
-            </select>
-            <svg
-              className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </div>
-          <button
-            onClick={newCollection}
-            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-          >
-            New collection
-          </button>
-          {active && (
-            <button
-              onClick={() => setShowOnly((v) => !v)}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-            >
-              {showOnly ? "Show all nodes" : "Show only this collection"}
-            </button>
-          )}
-          {active && (
-            <button
-              onClick={deleteCollection}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-            >
-              Delete collection
-            </button>
-          )}
+          <CollectionsMenu
+            collections={collections}
+            activeId={activeId}
+            activeName={active?.name}
+            showOnly={showOnly}
+            onSelect={(id) => {
+              setActiveId(id);
+              if (!id) setShowOnly(false);
+              setCollOpen(false);
+            }}
+            onToggleShowOnly={() => setShowOnly((v) => !v)}
+            onNew={() => {
+              setCollOpen(false);
+              newCollection();
+            }}
+            onDelete={() => {
+              setCollOpen(false);
+              deleteCollection();
+            }}
+            open={collOpen}
+            setOpen={setCollOpen}
+          />
           {active && (
             <p className="text-[11px] leading-snug text-muted-foreground">
               Click the bookmark on a box to add it to or remove it from “{active.name}”.
@@ -1211,6 +1325,45 @@ function Index() {
           <Controls showInteractive={false} />
         </ReactFlow>
       )}
+      <EdgeMarkers />
+      <div className="pointer-events-none absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 rounded-md border bg-background/90 px-4 py-2 text-xs text-muted-foreground">
+        <div className="flex gap-5">
+          {[
+            ["mg-uses", "used by"],
+            ["mg-proof", "proved by"],
+            ["mg-lemma", "has lemma"],
+          ].map(([m, t]) => (
+            <span key={m} className="flex items-center gap-1.5">
+              <svg width="34" height="14" className="text-foreground">
+                <line x1="2" y1="7" x2="24" y2="7" stroke="currentColor" strokeWidth="1.25" markerEnd={`url(#${m})`} />
+              </svg>
+              {t}
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-5">
+          {[
+            ["", "canonical"],
+            ["5 5", "weak relation"],
+            ["2 4", "definition"],
+          ].map(([dash, t]) => (
+            <span key={t} className="flex items-center gap-1.5">
+              <svg width="34" height="14" className="text-foreground">
+                <line
+                  x1="2"
+                  y1="7"
+                  x2="32"
+                  y2="7"
+                  stroke="currentColor"
+                  strokeWidth={dash === "" ? 3 : 1.25}
+                  strokeDasharray={dash || undefined}
+                />
+              </svg>
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
