@@ -429,15 +429,18 @@ function buildGraph(
     });
   }
 
-  const arrow = { type: MarkerType.ArrowClosed, color: "currentColor", width: 26, height: 26 };
-  const edge = (source: string, target: string, label: string, dashed = false, twoWay = false): Edge => ({
+  // Each relation type gets its own arrowhead (SVG markers defined in EdgeMarkers).
+  const markerFor = (label: string) =>
+    label === "has proof" ? "mg-proof" : label === "has lemma" ? "mg-lemma" : "mg-uses";
+  const edge = (source: string, target: string, label: string, dashed = false, startLabel?: string): Edge => ({
     id: `${source}-${target}`,
     source,
     target,
     type: "floating", // anchors recomputed each frame: leaves the box on the facing side
     label,
-    markerEnd: arrow,
-    ...(twoWay ? { markerStart: arrow } : {}),
+    data: { relation: label },
+    markerEnd: markerFor(label),
+    ...(startLabel ? { markerStart: markerFor(startLabel) } : {}),
     style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: dashed ? "4 4" : undefined },
   });
   // Collect all relations, then merge back-and-forth pairs into a single
@@ -458,13 +461,16 @@ function buildGraph(
       merged.add(fwd);
       merged.add(bwd);
       edges.push({
-        ...edge(r.source, r.target, `${r.label} / ${back.label}`, r.dashed && back.dashed, true),
+        ...edge(r.source, r.target, `${r.label} / ${back.label}`, r.dashed && back.dashed, back.label),
+        markerEnd: markerFor(r.label),
+        data: { relation: "both" },
         id: `${fwd}--both`,
       });
     } else {
       merged.add(fwd);
       edges.push(edge(r.source, r.target, r.label, r.dashed));
     }
+  }
   }
   return { nodes, edges };
 }
@@ -838,19 +844,23 @@ function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nodes, visible, active, collections],
   );
-  // Strong edges: canonical connections. Each node touches at most one.
+  // Strong edges: canonical connections. A theorem has exactly one canonical
+  // proof; "used by" and lemma links can be canonical many times over.
   const [strongEdges, setStrongEdges] = useState<string[]>([]);
   const toggleStrong = (e: Edge) => {
     // Definition edges are always dotted and can never be canonical.
     if (graph?.nodes.find((n) => n.id === e.source)?.data.item.kind === "definition") return;
     const isStrong = strongEdges.includes(e.id);
     const ends = (id: string) => graph?.edges.find((x) => x.id === id);
+    const isProof = (x?: Edge) => (x?.data as { relation?: string } | undefined)?.relation === "has proof";
     const next = isStrong
       ? strongEdges.filter((x) => x !== e.id)
       : [
           ...strongEdges.filter((x) => {
+            if (!isProof(e)) return true;
             const o = ends(x);
-            return !o || ![o.source, o.target].some((n) => n === e.source || n === e.target);
+            // Only one canonical proof per theorem
+            return !o || !(isProof(o) && o.source === e.source);
           }),
           e.id,
         ];
