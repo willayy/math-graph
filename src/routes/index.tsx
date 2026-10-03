@@ -1,9 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  Handle,
+  Position,
+  MarkerType,
+  type Node,
+  type Edge,
+  type NodeProps,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
-
-type TableName = keyof Database["public"]["Tables"];
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -27,119 +37,170 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+type Kind = "axiom" | "definition" | "conjecture" | "theorem" | "lemma" | "proof";
 type Row = {
   id: string;
   date: string | null;
   name: string;
   creator: string | null;
-  statement?: string;
-  description?: string;
+  statement: string;
+  theorem_id?: string;
 };
+type Item = Row & { kind: Kind };
+type CardData = { item: Item };
 
-function useTable<T>(table: TableName) {
-  return useQuery({
-    queryKey: [table],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from(table)
-        .select("*")
-        .order("name");
-      if (error) throw error;
-      return (data ?? []) as T[];
-    },
+const NODE_W = 260;
+const COL_GAP = 120;
+const ROW_GAP = 40;
+const NODE_H = 130;
+
+async function fetchGraph() {
+  const tables = [
+    ["axioms", "axiom"],
+    ["definitions", "definition"],
+    ["conjectures", "conjecture"],
+    ["theorems", "theorem"],
+    ["lemmas", "lemma"],
+    ["proofs", "proof"],
+  ] as const;
+  const results = await Promise.all(
+    tables.map(([t]) => supabase.from(t).select("*").order("name")),
+  );
+  const items: Item[] = [];
+  results.forEach((r, i) => {
+    if (r.error) throw r.error;
+    for (const row of (r.data ?? []) as unknown as Row[])
+      items.push({ ...row, kind: tables[i][1] });
   });
+  const uses = await supabase.from("theorem_uses").select("theorem_id, used_id");
+  if (uses.error) throw uses.error;
+  return { items, uses: uses.data ?? [] };
 }
 
-function Meta({ row }: { row: Row }) {
-  const parts = [row.date ?? "Date unknown", row.creator ?? "Creator unknown"];
+function Card({ data }: NodeProps<Node<CardData>>) {
+  const { item } = data;
+  const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   return (
-    <p className="text-xs text-muted-foreground">{parts.join(" · ")}</p>
+    <div
+      className="rounded-md border border-foreground/80 bg-background p-3 text-left shadow-sm"
+      style={{ width: NODE_W }}
+    >
+      <Handle type="target" position={Position.Left} className="!bg-foreground" />
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {item.kind}
+        </span>
+        <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
+      </div>
+      <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">
+        {item.name}
+      </h3>
+      <p className="mt-1 line-clamp-3 text-xs leading-snug text-foreground/75">
+        {item.statement}
+      </p>
+      <Handle type="source" position={Position.Right} className="!bg-foreground" />
+    </div>
   );
 }
 
-function Section({
-  title,
-  rows,
-  bodyKey,
-}: {
-  title: string;
-  rows: Row[] | undefined;
-  bodyKey: "statement" | "description";
-}) {
-  return (
-    <section>
-      <h2 className="border-b border-border pb-2 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-        {title}
-        <span className="ml-2 font-normal">{rows?.length ?? 0}</span>
-      </h2>
-      <ul className="divide-y divide-border">
-        {rows?.map((row) => (
-          <li key={row.id} className="py-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="font-medium text-foreground">{row.name}</h3>
-              <Meta row={row} />
-            </div>
-            <p className="mt-1 text-sm leading-relaxed text-foreground/80">
-              {row[bodyKey]}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
+const nodeTypes = { card: Card };
+
+function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }[]) {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const deps = new Map<string, string[]>();
+  for (const u of uses) {
+    if (!byId.has(u.used_id) || !byId.has(u.theorem_id)) continue;
+    deps.set(u.theorem_id, [...(deps.get(u.theorem_id) ?? []), u.used_id]);
+  }
+  // Depth = longest chain back to foundations
+  const depth = new Map<string, number>();
+  const visit = (id: string, stack = new Set<string>()): number => {
+    if (depth.has(id)) return depth.get(id)!;
+    if (stack.has(id)) return 0;
+    stack.add(id);
+    const it = byId.get(id)!;
+    let d = 0;
+    if (it.kind === "theorem") {
+      const ds = deps.get(id) ?? [];
+      d = ds.length ? 1 + Math.max(...ds.map((x) => visit(x, stack))) : 1;
+    } else if ((it.kind === "lemma" || it.kind === "proof") && it.theorem_id && byId.has(it.theorem_id)) {
+      d = visit(it.theorem_id, stack) + 1;
+    }
+    depth.set(id, d);
+    return d;
+  };
+  items.forEach((i) => visit(i.id));
+
+  const cols = new Map<number, Item[]>();
+  for (const i of items) {
+    const d = depth.get(i.id)!;
+    cols.set(d, [...(cols.get(d) ?? []), i]);
+  }
+  const nodes: Node<CardData>[] = [];
+  for (const [d, list] of cols) {
+    const total = list.length * (NODE_H + ROW_GAP);
+    list.forEach((item, idx) => {
+      nodes.push({
+        id: item.id,
+        type: "card",
+        position: { x: d * (NODE_W + COL_GAP), y: idx * (NODE_H + ROW_GAP) - total / 2 },
+        data: { item },
+      });
+    });
+  }
+
+  const edge = (source: string, target: string, dashed = false): Edge => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+    type: "smoothstep",
+    markerEnd: { type: MarkerType.ArrowClosed, color: "currentColor" },
+    style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: dashed ? "4 4" : undefined },
+  });
+  const edges: Edge[] = [];
+  for (const [t, ds] of deps) for (const d of ds) edges.push(edge(d, t));
+  for (const i of items)
+    if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id))
+      edges.push(edge(i.theorem_id, i.id, true));
+  return { nodes, edges };
 }
 
 function Index() {
-  const sets = useTable<Row>("sets");
-  const axioms = useTable<Row>("axioms");
-  const definitions = useTable<Row>("definitions");
-  const theorems = useTable<Row>("theorems");
-  const lemmas = useTable<Row>("lemmas");
-  const conjectures = useTable<Row>("conjectures");
-  const proofs = useTable<Row>("proofs");
-
-  const loading =
-    sets.isLoading ||
-    axioms.isLoading ||
-    definitions.isLoading ||
-    theorems.isLoading ||
-    lemmas.isLoading ||
-    conjectures.isLoading ||
-    proofs.isLoading;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
+  const graph = useMemo(() => (data ? buildGraph(data.items, data.uses) : null), [data]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="mx-auto max-w-3xl px-6 py-10">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            MathGraph
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Mathematics as it actually is: a problem leads to a theorem, a
-            theorem to a proof, a proof back to axioms.
-          </p>
-        </div>
+    <div className="relative h-screen w-screen bg-background">
+      <header className="pointer-events-none absolute left-0 top-0 z-10 p-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">MathGraph</h1>
+        <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+          Arrows point from what is used to what it leads to. Drag to pan, scroll to zoom.
+        </p>
       </header>
-      <main className="mx-auto max-w-3xl space-y-12 px-6 py-10">
-        {loading && (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        )}
-        <Section title="Sets" rows={sets.data} bodyKey="description" />
-        <Section title="Axioms" rows={axioms.data} bodyKey="statement" />
-        <Section
-          title="Definitions"
-          rows={definitions.data}
-          bodyKey="statement"
-        />
-        <Section title="Theorems" rows={theorems.data} bodyKey="statement" />
-        <Section title="Lemmas" rows={lemmas.data} bodyKey="statement" />
-        <Section
-          title="Conjectures"
-          rows={conjectures.data}
-          bodyKey="statement"
-        />
-        <Section title="Proofs" rows={proofs.data} bodyKey="statement" />
-      </main>
+      {(isLoading || !mounted) && (
+        <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
+      )}
+      {error && (
+        <p className="absolute inset-0 grid place-items-center text-sm text-destructive">
+          Could not load the graph.
+        </p>
+      )}
+      {mounted && graph && (
+        <ReactFlow
+          nodes={graph.nodes}
+          edges={graph.edges}
+          nodeTypes={nodeTypes}
+          fitView
+          minZoom={0.2}
+          nodesConnectable={false}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color="var(--border)" gap={24} />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      )}
     </div>
   );
 }
