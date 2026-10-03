@@ -350,7 +350,7 @@ const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
 const GRAVITY = 0.003;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
-const REST_SPEED = 0.03;
+const REST_SPEED = 0.3;
 
 function forceStep(
   nodes: Node<CardData>[],
@@ -434,9 +434,9 @@ function forceStep(
       return n;
     }
     // Extra braking at low speed so motion decays smoothly into the dead zone
-    if (sp < 1.5) {
-      vx *= 0.7;
-      vy *= 0.7;
+    if (sp < 2.5) {
+      vx *= 0.6;
+      vy *= 0.6;
     }
     vels.set(n.id, { vx, vy });
     moving = true;
