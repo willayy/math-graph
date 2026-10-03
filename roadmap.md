@@ -6,3 +6,5 @@
 - [x] Draggable nodes with gentle repulsion
 - [x] Click a node to expand it and show full content
 - [x] Server-side LaTeX rendering: math in statements rendered as images in nodes
+- [ ] Stop node wobble (numerical instability in settle)
+- [ ] Color-code nodes by kind
