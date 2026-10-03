@@ -350,20 +350,43 @@ function buildGraph(
     });
   }
 
-  const edge = (source: string, target: string, label: string, dashed = false): Edge => ({
+  const arrow = { type: MarkerType.ArrowClosed, color: "currentColor", width: 26, height: 26 };
+  const edge = (source: string, target: string, label: string, dashed = false, twoWay = false): Edge => ({
     id: `${source}-${target}`,
     source,
     target,
     type: "default", // bezier curve — bends around boxes instead of cutting through
     label,
-    markerEnd: { type: MarkerType.ArrowClosed, color: "currentColor" },
+    markerEnd: arrow,
+    ...(twoWay ? { markerStart: arrow } : {}),
     style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: dashed ? "4 4" : undefined },
   });
-  const edges: Edge[] = [];
-  for (const [t, ds] of deps) for (const d of ds) edges.push(edge(d, t, "is used by"));
+  // Collect all relations, then merge back-and-forth pairs into a single
+  // double-headed edge.
+  const raw: { source: string; target: string; label: string; dashed: boolean }[] = [];
+  for (const [t, ds] of deps) for (const d of ds) raw.push({ source: d, target: t, label: "is used by", dashed: false });
   for (const i of items)
     if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id))
-      edges.push(edge(i.theorem_id, i.id, i.kind === "proof" ? "has proof" : "has lemma", true));
+      raw.push({ source: i.theorem_id, target: i.id, label: i.kind === "proof" ? "has proof" : "has lemma", dashed: true });
+  const edges: Edge[] = [];
+  const merged = new Set<string>();
+  for (const r of raw) {
+    const fwd = `${r.source}-${r.target}`;
+    const bwd = `${r.target}-${r.source}`;
+    if (merged.has(fwd)) continue;
+    const back = raw.find((o) => o.source === r.target && o.target === r.source);
+    if (back) {
+      merged.add(fwd);
+      merged.add(bwd);
+      edges.push({
+        ...edge(r.source, r.target, `${r.label} / ${back.label}`, r.dashed && back.dashed, true),
+        id: `${fwd}--both`,
+      });
+    } else {
+      merged.add(fwd);
+      edges.push(edge(r.source, r.target, r.label, r.dashed));
+    }
+  }
   return { nodes, edges };
 }
 
@@ -713,7 +736,7 @@ function Index() {
         </button>
         <button
           onClick={toggleFloating}
-          className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
+          className="pointer-events-auto ml-2 mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
         >
           {floating ? "Disable floating" : "Enable floating"}
         </button>
