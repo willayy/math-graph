@@ -8,9 +8,13 @@ import {
   Handle,
   Position,
   MarkerType,
+  BaseEdge,
+  getBezierPath,
+  useInternalNode,
   useNodesState,
   type Node,
   type Edge,
+  type EdgeProps,
   type NodeProps,
   type OnNodesChange,
   type ReactFlowInstance,
@@ -253,6 +257,63 @@ function Card({ data }: NodeProps<Node<CardData>>) {
 
 const nodeTypes = { card: Card };
 
+// Floating edge: the connection points are recomputed from the nodes' current
+// rectangles on every render, so each line leaves the box on the side facing
+// the other box (and arrowheads stay glued to the boxes, never mid-bend).
+function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style }: EdgeProps) {
+  const sn = useInternalNode(source);
+  const tn = useInternalNode(target);
+  if (!sn || !tn) return null;
+  const w = (n: typeof sn | typeof tn) => n.measured?.width ?? NODE_W;
+  const h = (n: typeof sn | typeof tn) => n.measured?.height ?? NODE_H;
+  const sc = { x: sn.internals.positionAbsolute.x + w(sn) / 2, y: sn.internals.positionAbsolute.y + h(sn) / 2 };
+  const tc = { x: tn.internals.positionAbsolute.x + w(tn) / 2, y: tn.internals.positionAbsolute.y + h(tn) / 2 };
+  const dx = tc.x - sc.x;
+  const dy = tc.y - sc.y;
+  // Point where the ray from a box center toward the other exits its rectangle
+  const bound = (cx: number, cy: number, bw: number, bh: number, vx: number, vy: number) => {
+    if (vx === 0 && vy === 0) return { x: cx, y: cy };
+    const s = Math.min(vx === 0 ? Infinity : bw / 2 / Math.abs(vx), vy === 0 ? Infinity : bh / 2 / Math.abs(vy));
+    return { x: cx + vx * s, y: cy + vy * s };
+  };
+  const p1 = bound(sc.x, sc.y, w(sn), h(sn), dx, dy);
+  const p2 = bound(tc.x, tc.y, w(tn), h(tn), -dx, -dy);
+  // Bezier control direction follows the dominant axis so the curve starts flat
+  const horiz = Math.abs(dx) >= Math.abs(dy);
+  const [path, labelX, labelY] = getBezierPath({
+    sourceX: p1.x,
+    sourceY: p1.y,
+    sourcePosition: horiz ? (dx >= 0 ? Position.Right : Position.Left) : dy >= 0 ? Position.Bottom : Position.Top,
+    targetX: p2.x,
+    targetY: p2.y,
+    targetPosition: horiz ? (dx >= 0 ? Position.Left : Position.Right) : dy >= 0 ? Position.Top : Position.Bottom,
+  });
+  const text = typeof label === "string" ? label : undefined;
+  const tw = text ? text.length * 6 + 10 : 0;
+  return (
+    <g>
+      <BaseEdge id={id} path={path} {...(markerEnd ? { markerEnd } : {})} {...(markerStart ? { markerStart } : {})} style={style} />
+      {text && (
+        <>
+          <rect
+            className="react-flow__edge-textbg"
+            x={labelX - tw / 2}
+            y={labelY - 8}
+            width={tw}
+            height={16}
+            rx={3}
+          />
+          <text className="react-flow__edge-text" x={labelX} y={labelY} textAnchor="middle" dominantBaseline="central">
+            {text}
+          </text>
+        </>
+      )}
+    </g>
+  );
+}
+
+const edgeTypes = { floating: FloatingEdge };
+
 function buildGraph(
   items: Item[],
   uses: { theorem_id: string; used_id: string }[],
@@ -373,7 +434,7 @@ function buildGraph(
     id: `${source}-${target}`,
     source,
     target,
-    type: "default", // bezier curve — bends around boxes instead of cutting through
+    type: "floating", // anchors recomputed each frame: leaves the box on the facing side
     label,
     markerEnd: arrow,
     ...(twoWay ? { markerStart: arrow } : {}),
@@ -415,7 +476,7 @@ function buildGraph(
 type Vel = { vx: number; vy: number };
 type SimEdge = { source: string; target: string };
 
-const REPULSION = 110000; // inverse-square strength
+const REPULSION = 340000; // inverse-square strength — dominates all other forces
 const REPULSE_RANGE = 700;
 const SPRING_K = 0.004;
 const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
@@ -424,6 +485,8 @@ const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
 const UNTANGLE = 80; // force pushing crossing edges apart
+const SET_K = 0.0009; // pull between boxes sharing a set
+const KIND_K = 0.00035; // weaker pull between boxes of the same kind
 
 // Segment intersection test (proper crossings only; shared endpoints excluded by caller)
 function segmentsCross(
@@ -444,6 +507,7 @@ function forceStep(
   edges: SimEdge[],
   vels: Map<string, Vel>,
   pinned: Set<string>,
+  groups: Map<string, { kind: string; sets: string[] }>,
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
@@ -489,6 +553,30 @@ function forceStep(
     fy[i]! += ey * SPRING_K;
     fx[j]! -= ex * SPRING_K;
     fy[j]! -= ey * SPRING_K;
+  }
+
+  // Clustering: boxes in the same set pull toward each other; boxes of the
+  // same kind pull toward each other with a weaker force. Linear springs with
+  // no rest length, so groups gather into loose clusters.
+  for (let i = 0; i < nodes.length; i++) {
+    const ga = groups.get(nodes[i]!.id);
+    if (!ga) continue;
+    for (let j = i + 1; j < nodes.length; j++) {
+      const gb = groups.get(nodes[j]!.id);
+      if (!gb) continue;
+      let k = 0;
+      if (ga.sets.some((s) => gb.sets.includes(s))) k += SET_K;
+      if (ga.kind === gb.kind) k += KIND_K;
+      if (k === 0) continue;
+      const a = nodes[i]!;
+      const b = nodes[j]!;
+      const dx = cx(b) - cx(a);
+      const dy = cy(b) - cy(a);
+      fx[i]! += dx * k;
+      fy[i]! += dy * k;
+      fx[j]! -= dx * k;
+      fy[j]! -= dy * k;
+    }
   }
 
   // Untangle: any two crossing edges push their endpoints apart along the
@@ -759,6 +847,14 @@ function Index() {
     () => (graph ? graph.edges.map((e) => ({ source: e.source, target: e.target })) : []),
     [graph],
   );
+  // Group membership for the clustering forces: kind + sets per node
+  const simGroups = useMemo(() => {
+    const m = new Map<string, { kind: string; sets: string[] }>();
+    if (!data) return m;
+    for (const it of data.items) m.set(it.id, { kind: it.kind, sets: [] });
+    for (const se of data.setElements) m.get(se.element_id)?.sets.push(se.set_id);
+    return m;
+  }, [data]);
   useEffect(() => {
     let raf = 0;
     let wasMoving = false;
@@ -766,7 +862,7 @@ function Index() {
     const tick = () => {
       if (floatingRef.current)
         setNodes((ns) => {
-          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current);
+          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups);
           const moving = next !== ns;
           // Once the graph comes to rest, save that equilibrium so a refresh
           // starts already settled.
@@ -888,21 +984,34 @@ function Index() {
           >
             {floating ? "Disable floating" : "Enable floating"}
           </button>
-          <select
-            value={activeId}
-            onChange={(e) => {
-              setActiveId(e.target.value);
-              if (!e.target.value) setShowOnly(false);
-            }}
-            className="rounded-md border border-border bg-background px-2 pr-9 py-1.5 text-center text-foreground shadow-sm"
-          >
-            <option value="">No collection</option>
-            {collections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.ids.length})
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={activeId}
+              onChange={(e) => {
+                setActiveId(e.target.value);
+                if (!e.target.value) setShowOnly(false);
+              }}
+              className="w-full appearance-none rounded-md border border-border bg-background py-1.5 pl-3 pr-9 text-left text-foreground shadow-sm"
+            >
+              <option value="">No collection</option>
+              {collections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.ids.length})
+                </option>
+              ))}
+            </select>
+            <svg
+              className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </div>
           <button
             onClick={newCollection}
             className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
@@ -961,6 +1070,7 @@ function Index() {
           onNodesChange={onNodesChange as OnNodesChange<Node>}
           onNodeClick={(_, node) => toggleExpand(node.id)}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onInit={setFlow}
           fitView
           fitViewOptions={{ padding: 0.2 }}
