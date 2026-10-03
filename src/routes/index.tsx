@@ -644,8 +644,9 @@ const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
 const UNTANGLE = 4; // gentle push between crossing edges
-const SET_PULL = 0.0022; // pull toward the centre of each set the box belongs to
+const SET_PULL = 0.00242; // pull toward the centre of each set the box belongs to
 const KIND_PULL = 0.00088; // weaker pull toward the centre of the box's kind
+const INTERSET_REPULSION = 0.95; // slightly less push between boxes in different sets
 const ALPHA_DECAY = 0.985; // "temperature" cools every frame so the graph always settles
 const ALPHA_MIN = 0.004;
 
@@ -700,6 +701,10 @@ function forceStep(
       const dist = Math.max(raw, 60); // clamp: avoids huge forces at tiny distances
       const fade = 1 - raw / REPULSE_RANGE; // smooth falloff, no jump at the range edge
       let f = (REPULSION / (dist * dist)) * fade * fade;
+      const setsA = groups.get(a.id)?.sets ?? [];
+      const setsB = groups.get(b.id)?.sets ?? [];
+      if (setsA.length && setsB.length && !setsA.some((set) => setsB.includes(set)))
+        f *= INTERSET_REPULSION;
       const overlapX = (width(a) + width(b)) / 2 + 60 - Math.abs(dx);
       const overlapY = (height(a) + height(b)) / 2 + 60 - Math.abs(dy);
       if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.4;
@@ -1264,12 +1269,37 @@ function Index() {
   };
 
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
+  const clickedNodeRef = useRef(false);
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Re-fit the view once, after the initial layout has had time to settle
   useEffect(() => {
     if (!flow || !graph) return;
-    const t = setTimeout(() => flow.fitView({ padding: 0.2, duration: 800 }), 2500);
+    const t = setTimeout(() => {
+      if (!clickedNodeRef.current) void flow.fitView({ padding: 0.2, duration: 800 });
+    }, 2500);
     return () => clearTimeout(t);
   }, [flow, graph]);
+  useEffect(() => () => clearTimeout(focusTimerRef.current), []);
+  const focusNode = (id: string) => {
+    clickedNodeRef.current = true;
+    toggleExpand(id);
+    clearTimeout(focusTimerRef.current);
+    // Wait for the expanded box to be measured and its neighbors to move away.
+    focusTimerRef.current = setTimeout(() => {
+      const node = flow?.getNode(id);
+      if (!node || !flow) return;
+      const compact = window.innerWidth < 768;
+      const height = node.measured?.height ?? NODE_H;
+      const width = node.measured?.width ?? (node.data['expanded'] ? 340 : NODE_W);
+      const availableHeight = window.innerHeight - (compact ? 280 : 100);
+      const zoom = Math.max(0.65, Math.min(compact ? 1 : 1.15, availableHeight / height, (window.innerWidth - 48) / width));
+      // On small screens the controls occupy the top, so frame the card below them.
+      void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2 - (compact ? 115 / zoom : 0), {
+        zoom,
+        duration: 650,
+      });
+    }, 350);
+  };
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -1432,7 +1462,7 @@ function Index() {
           nodes={viewNodes}
           edges={viewEdges}
           onNodesChange={handleNodesChange as OnNodesChange<Node>}
-          onNodeClick={(_, node) => toggleExpand(node.id)}
+          onNodeClick={(_, node) => focusNode(node.id)}
           onEdgeClick={(_, e) => toggleStrong(e)}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
