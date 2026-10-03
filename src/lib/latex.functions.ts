@@ -24,5 +24,7 @@ export const renderLatex = createServerFn({ method: "GET" })
     let html = adaptor.innerHTML(node);
     // Fixed dark fill — the SVG is shown as an <img>, so it can't inherit CSS color
     html = html.replace("<svg ", '<svg fill="#3f3f46" ');
+    // Some browsers can't size standalone SVG images given in "ex" units — convert to px (1ex ≈ 8px)
+    html = html.replace(/(width|height)="([\d.]+)ex"/g, (_m, k, v) => `${k}="${(parseFloat(v) * 8).toFixed(2)}px"`);
     return { svg: html };
   });
