@@ -878,7 +878,8 @@ function forceStep(
       let d = Math.hypot(nx, ny);
       if (d < 0.01) { nx = -vy; ny = vx; d = Math.hypot(nx, ny); }
       nx /= d; ny /= d;
-      const need = Math.abs(nx) * width(n) / 2 + Math.abs(ny) * height(n) / 2 + 20;
+      // EDGE_BUFFER: a no-go corridor on each side of every line.
+      const need = Math.abs(nx) * width(n) / 2 + Math.abs(ny) * height(n) / 2 + EDGE_BUFFER;
       const dd = Math.hypot(cx(n) - px, cy(n) - py);
       if (dd >= need - 0.5) continue;
       const push = (need - dd) * 0.525;
@@ -897,6 +898,7 @@ function forceStep(
   return moving ? next : nodes; // same array => no re-render once settled
 }
 
+const EDGE_BUFFER = 60;
 const LAYOUT_KEY = "mathgraph-layout-v1";
 const COLLECTIONS_KEY = "mathgraph-collections";
 const STRONG_KEY = "mathgraph-strong-edges";
