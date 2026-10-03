@@ -801,7 +801,7 @@ function Index() {
     const tick = () => {
       if (floatingRef.current)
         setNodes((ns) => {
-          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current);
+          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups);
           const moving = next !== ns;
           // Once the graph comes to rest, save that equilibrium so a refresh
           // starts already settled.
