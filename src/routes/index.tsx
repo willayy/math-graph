@@ -81,12 +81,12 @@ async function fetchGraph() {
 }
 
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item } = data;
+  const { item, expanded } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   return (
     <div
-      className="rounded-md border border-foreground/80 bg-background p-3 text-left shadow-sm"
-      style={{ width: NODE_W }}
+      className="cursor-pointer rounded-md border border-foreground/80 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md"
+      style={{ width: expanded ? 340 : NODE_W }}
     >
       <Handle type="target" position={Position.Left} className="!bg-foreground" />
       <div className="flex items-baseline justify-between gap-2">
@@ -98,13 +98,20 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">
         {item.name}
       </h3>
-      <p className="mt-1 line-clamp-3 text-xs leading-snug text-foreground/75">
+      <p
+        className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
+      >
         {item.statement}
       </p>
       {item.citation && (
-        <p className="mt-1.5 line-clamp-1 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground">
+        <p
+          className={`mt-1.5 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground ${expanded ? "" : "line-clamp-1"}`}
+        >
           {item.citation}
         </p>
+      )}
+      {expanded && (
+        <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
       )}
       <Handle type="source" position={Position.Right} className="!bg-foreground" />
     </div>
