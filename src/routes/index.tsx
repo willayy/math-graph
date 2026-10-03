@@ -66,6 +66,8 @@ type CardData = {
   onTogglePin?: (id: string) => void;
   inCollection?: boolean;
   onToggleCollection?: (id: string) => void;
+  tracing?: boolean;
+  onTrace?: (id: string) => void;
 };
 
 type Collection = { id: string; name: string; ids: string[] };
@@ -150,7 +152,7 @@ const KIND_STYLES: Record<Kind, { border: string; label: string; chip: string }>
 };
 
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item, expanded, relations, pinned, onTogglePin, inCollection, onToggleCollection } = data;
+  const { item, expanded, relations, pinned, onTogglePin, inCollection, onToggleCollection, tracing, onTrace } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   const style = KIND_STYLES[item.kind];
   return (
@@ -246,6 +248,17 @@ function Card({ data }: NodeProps<Node<CardData>>) {
             </div>
           ))}
         </div>
+      )}
+      {expanded && onTrace && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onTrace(item.id);
+          }}
+          className="nodrag mt-2 w-full rounded border border-border px-2 py-1 text-[11px] hover:bg-muted"
+        >
+          {tracing ? "Show everything" : "Show canonical trace only"}
+        </button>
       )}
       {expanded && (
         <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
@@ -975,10 +988,34 @@ function Index() {
     const ids = active.ids.includes(id) ? active.ids.filter((x) => x !== id) : [...active.ids, id];
     updateCollections(collections.map((c) => (c.id === active.id ? { ...c, ids } : c)));
   };
-  const visible = useMemo(
-    () => (active && showOnly ? new Set(active.ids) : null),
-    [active, showOnly],
-  );
+  // Canonical filters: hide non-canonical lines, or show only the chain of
+  // canonical lines reachable from one box (in both directions).
+  const [canonicalOnly, setCanonicalOnly] = useState(false);
+  const [traceId, setTraceId] = useState<string | null>(null);
+  const trace = useMemo(() => {
+    if (!traceId || !graph) return null;
+    const strong = graph.edges.filter((e) => strongEdges.includes(e.id));
+    const seen = new Set([traceId]);
+    const queue = [traceId];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      for (const e of strong) {
+        const other = e.source === cur ? e.target : e.target === cur ? e.source : null;
+        if (other && !seen.has(other)) {
+          seen.add(other);
+          queue.push(other);
+        }
+      }
+    }
+    return seen;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [traceId, graph, strongEdges]);
+  const toggleTrace = (id: string) => setTraceId((cur) => (cur === id ? null : id));
+  const visible = useMemo(() => {
+    const coll = active && showOnly ? new Set(active.ids) : null;
+    if (!trace) return coll;
+    return coll ? new Set([...trace].filter((x) => coll.has(x))) : trace;
+  }, [active, showOnly, trace]);
   const viewNodes = useMemo(
     () =>
       nodes.map((n) => ({
@@ -988,10 +1025,12 @@ function Index() {
           ...n.data,
           inCollection: active?.ids.includes(n.id) ?? false,
           onToggleCollection: active ? toggleInCollection : undefined,
+          tracing: traceId === n.id,
+          onTrace: toggleTrace,
         },
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, visible, active, collections],
+    [nodes, visible, active, collections, traceId],
   );
   // Strong edges: canonical connections. A theorem has exactly one canonical
   // proof; "used by" and lemma links can be canonical many times over.
@@ -1020,9 +1059,10 @@ function Index() {
   };
   const viewEdges = useMemo(() => {
     if (!graph) return [];
-    const list = visible
+    let list = visible
       ? graph.edges.filter((e) => visible.has(e.source) && visible.has(e.target))
       : graph.edges;
+    if (canonicalOnly || trace) list = list.filter((e) => strongEdges.includes(e.id));
     const kindOf = (id: string) => graph.nodes.find((n) => n.id === id)?.data.item.kind;
     return list.map((e) => {
       // Definitions get their own dotted line: theorems lean on many of them,
@@ -1045,7 +1085,7 @@ function Index() {
         },
       };
     });
-  }, [graph, visible, strongEdges]);
+  }, [graph, visible, strongEdges, canonicalOnly, trace]);
 
   const saveLayout = (ns: Node<CardData>[]) => {
     const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
@@ -1272,6 +1312,15 @@ function Index() {
           >
             {floating ? "Disable floating" : "Enable floating"}
           </button>
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm hover:bg-muted">
+            <input type="checkbox" checked={canonicalOnly} onChange={(e) => setCanonicalOnly(e.target.checked)} className="accent-foreground" />
+            Canonical relations only
+          </label>
+          {traceId && (
+            <button onClick={() => setTraceId(null)} className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm hover:bg-muted">
+              Clear canonical trace
+            </button>
+          )}
           <SubmissionsMenu
             userId={userId}
             items={(data?.items ?? []).map((i) => ({ id: i.id, name: i.name, kind: i.kind }))}
@@ -1370,7 +1419,7 @@ function Index() {
         <div className="flex gap-5">
           {[
             ["", "canonical"],
-            ["5 5", "weak relation"],
+            ["5 5", "non-canonical"],
             ["2 4", "definition"],
           ].map(([dash, t]) => (
             <span key={t} className="flex items-center gap-1.5">
