@@ -389,6 +389,12 @@ function Index() {
     );
 
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
+  // Re-fit the view once, after the initial layout has had time to settle
+  useEffect(() => {
+    if (!flow || !graph) return;
+    const t = setTimeout(() => flow.fitView({ padding: 0.2, duration: 800 }), 2500);
+    return () => clearTimeout(t);
+  }, [flow, graph]);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
 
