@@ -484,9 +484,11 @@ const GRAVITY = 0.003;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
-const UNTANGLE = 80; // force pushing crossing edges apart
-const SET_K = 0.0009; // pull between boxes sharing a set
-const KIND_K = 0.00035; // weaker pull between boxes of the same kind
+const UNTANGLE = 4; // gentle push between crossing edges
+const SET_PULL = 0.004; // pull toward the centre of each set the box belongs to
+const KIND_PULL = 0.0015; // weaker pull toward the centre of the box's kind
+const ALPHA_DECAY = 0.985; // "temperature" cools every frame so the graph always settles
+const ALPHA_MIN = 0.004;
 
 // Segment intersection test (proper crossings only; shared endpoints excluded by caller)
 function segmentsCross(
@@ -508,8 +510,14 @@ function forceStep(
   vels: Map<string, Vel>,
   pinned: Set<string>,
   groups: Map<string, { kind: string; sets: string[] }>,
+  alpha: number,
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
+  const anyDrag = nodes.some((n) => n.dragging);
+  if (alpha < ALPHA_MIN && !anyDrag) {
+    vels.clear();
+    return nodes;
+  }
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
   const fy = new Float64Array(nodes.length);
@@ -526,9 +534,11 @@ function forceStep(
         dx = Math.random() - 0.5;
         dy = Math.random() - 0.5;
       }
-      const dist = Math.max(Math.hypot(dx, dy), 20); // clamp: avoids huge forces at tiny distances
-      if (dist > REPULSE_RANGE) continue;
-      let f = REPULSION / (dist * dist);
+      const raw = Math.hypot(dx, dy);
+      if (raw > REPULSE_RANGE) continue;
+      const dist = Math.max(raw, 60); // clamp: avoids huge forces at tiny distances
+      const fade = 1 - raw / REPULSE_RANGE; // smooth falloff, no jump at the range edge
+      let f = (REPULSION / (dist * dist)) * fade * fade;
       const overlapX = NODE_W + 24 - Math.abs(dx);
       const overlapY = NODE_H + 24 - Math.abs(dy);
       if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.15;
@@ -555,29 +565,33 @@ function forceStep(
     fy[j]! -= ey * SPRING_K;
   }
 
-  // Clustering: boxes in the same set pull toward each other; boxes of the
-  // same kind pull toward each other with a weaker force. Linear springs with
-  // no rest length, so groups gather into loose clusters.
-  for (let i = 0; i < nodes.length; i++) {
-    const ga = groups.get(nodes[i]!.id);
-    if (!ga) continue;
-    for (let j = i + 1; j < nodes.length; j++) {
-      const gb = groups.get(nodes[j]!.id);
-      if (!gb) continue;
-      let k = 0;
-      if (ga.sets.some((s) => gb.sets.includes(s))) k += SET_K;
-      if (ga.kind === gb.kind) k += KIND_K;
-      if (k === 0) continue;
-      const a = nodes[i]!;
-      const b = nodes[j]!;
-      const dx = cx(b) - cx(a);
-      const dy = cy(b) - cy(a);
-      fx[i]! += dx * k;
-      fy[i]! += dy * k;
-      fx[j]! -= dx * k;
-      fy[j]! -= dy * k;
-    }
-  }
+  // Clustering: each box is pulled toward the centre of its sets and (more
+  // weakly) of its kind. Pulling toward a group centre keeps the force size
+  // independent of group size, so big groups don't collapse.
+  const centres = new Map<string, { x: number; y: number; n: number }>();
+  const add = (key: string, n: Node) => {
+    const c = centres.get(key) ?? { x: 0, y: 0, n: 0 };
+    c.x += cx(n); c.y += cy(n); c.n++;
+    centres.set(key, c);
+  };
+  nodes.forEach((n) => {
+    const g = groups.get(n.id);
+    if (!g) return;
+    add("k:" + g.kind, n);
+    g.sets.forEach((s) => add("s:" + s, n));
+  });
+  nodes.forEach((n, i) => {
+    const g = groups.get(n.id);
+    if (!g) return;
+    const pull = (key: string, k: number) => {
+      const c = centres.get(key);
+      if (!c || c.n < 2) return;
+      fx[i]! += (c.x / c.n - cx(n)) * k;
+      fy[i]! += (c.y / c.n - cy(n)) * k;
+    };
+    pull("k:" + g.kind, KIND_PULL);
+    g.sets.forEach((s) => pull("s:" + s, SET_PULL));
+  });
 
   // Untangle: any two crossing edges push their endpoints apart along the
   // line between their midpoints, so the layout works toward planarity.
@@ -634,8 +648,8 @@ function forceStep(
       return n;
     }
     const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
-    let vx = (v.vx + fx[i]! + (mx - cx(n)) * GRAVITY) * DAMPING;
-    let vy = (v.vy + fy[i]! + (my - cy(n)) * GRAVITY) * DAMPING;
+    let vx = (v.vx + (fx[i]! + (mx - cx(n)) * GRAVITY) * alpha) * DAMPING;
+    let vy = (v.vy + (fy[i]! + (my - cy(n)) * GRAVITY) * alpha) * DAMPING;
     const sp = Math.hypot(vx, vy);
     if (sp > MAX_SPEED) {
       vx = (vx / sp) * MAX_SPEED;
@@ -858,11 +872,14 @@ function Index() {
   useEffect(() => {
     let raf = 0;
     let wasMoving = false;
+    let alpha = 1;
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       if (floatingRef.current)
         setNodes((ns) => {
-          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups);
+          if (ns.some((n) => n.dragging)) alpha = Math.max(alpha, 0.5);
+          alpha *= ALPHA_DECAY;
+          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
           const moving = next !== ns;
           // Once the graph comes to rest, save that equilibrium so a refresh
           // starts already settled.
