@@ -304,6 +304,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_preferences: {
+        Row: {
+          floating: boolean
+          layout: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          floating?: boolean
+          layout?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          floating?: boolean
+          layout?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
