@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -251,7 +251,7 @@ function SubmissionView(props: { id: string; data: Review; items: GraphItem[]; u
         {s.creator && (<><dt className="text-muted-foreground">Creator</dt><dd>{s.creator}</dd></>)}
         {s.date && (<><dt className="text-muted-foreground">Date</dt><dd>{s.date}</dd></>)}
         {s.citation && (<><dt className="text-muted-foreground">Citation</dt><dd>{s.citation}</dd></>)}
-        {links.map((l) => (<><dt key={`${l.id}t`} className="text-muted-foreground">{l.relation === "uses" ? "Uses" : l.relation === "proof_of" ? "Proof of" : "Lemma of"}</dt><dd key={`${l.id}d`}>{items.find((i) => i.id === l.target_id)?.name ?? "?"}</dd></>))}
+        {links.map((l) => (<Fragment key={l.id}><dt className="text-muted-foreground">{l.relation === "uses" ? "Uses" : l.relation === "proof_of" ? "Proof of" : "Lemma of"}</dt><dd>{items.find((i) => i.id === l.target_id)?.name ?? "?"}</dd></Fragment>))}
       </dl>
       {votes.length > 0 && (
         <div className="text-xs">
