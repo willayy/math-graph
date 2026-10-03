@@ -20,6 +20,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
+import { SubmissionsMenu } from "@/components/SubmissionsMenu";
 import { renderLatex } from "@/lib/latex.functions";
 import { Bookmark, Pin } from "lucide-react";
 
@@ -891,6 +892,23 @@ function Index() {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!userId) { setFullName(null); return; }
+    void (async () => {
+      const { data: p } = await supabase.from("profiles").select("full_name").eq("id", userId).maybeSingle();
+      if (p) return setFullName(p.full_name);
+      const { data: u } = await supabase.auth.getUser();
+      let name = (u.user?.user_metadata?.["full_name"] as string | undefined)?.trim();
+      while (!name || name.length < 2) {
+        const entered = window.prompt("Please enter your full real name (shown on your contributions):");
+        if (entered === null) return;
+        name = entered.trim();
+      }
+      const { error } = await supabase.from("profiles").insert({ id: userId, full_name: name });
+      if (!error) setFullName(name);
+    })();
+  }, [userId]);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       userIdRef.current = data.user?.id ?? null;
@@ -1254,6 +1272,14 @@ function Index() {
           >
             {floating ? "Disable floating" : "Enable floating"}
           </button>
+          <SubmissionsMenu
+            userId={userId}
+            items={(data?.items ?? []).map((i) => ({ id: i.id, name: i.name, kind: i.kind }))}
+          />
+          <div className="flex gap-2">
+            <Link to="/history" className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-center text-foreground shadow-sm hover:bg-muted">History</Link>
+            <Link to="/about" className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-center text-foreground shadow-sm hover:bg-muted">About</Link>
+          </div>
           <CollectionsMenu
             collections={collections}
             activeId={activeId}
@@ -1286,7 +1312,7 @@ function Index() {
       <div className="pointer-events-auto absolute bottom-0 right-0 z-10 p-6 text-xs text-muted-foreground">
         {userId ? (
           <span>
-            Signed in as {email} — your layout is saved to your account.{" "}
+            Signed in as {fullName ?? email} — your layout is saved to your account.{" "}
             <button onClick={() => supabase.auth.signOut()} className="underline">
               Sign out
             </button>
