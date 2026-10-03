@@ -21,3 +21,6 @@
 - [x] Dynamic edge anchors: edges attach on the facing side instead of a fixed handle
 - [x] Fix collection dropdown text/arrow alignment
 - [x] Make repulsion the strongest force
+- [x] Calm the jittery force simulation (cooling, centre-based clustering)
+- [x] Put Book III entries in their own set
+- [ ] Dropdown: centered text, arrow on the right
