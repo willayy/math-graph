@@ -292,7 +292,7 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
   const tw = text ? text.length * 6 + 10 : 0;
   return (
     <g>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} markerStart={markerStart} style={style} />
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} {...(markerStart ? { markerStart } : {})} style={style} />
       {text && (
         <>
           <rect
