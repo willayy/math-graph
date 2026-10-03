@@ -8,3 +8,4 @@
 - [x] Server-side LaTeX rendering: math in statements rendered as images in nodes
 - [ ] Stop node wobble (numerical instability in settle)
 - [ ] Color-code nodes by kind
+- [ ] Pin nodes + persist saved graph layout across visits
