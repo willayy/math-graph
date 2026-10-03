@@ -9,3 +9,4 @@
 - [ ] Stop node wobble (numerical instability in settle)
 - [ ] Color-code nodes by kind
 - [ ] Pin nodes + persist saved graph layout across visits
+- [ ] Group relations by type in expanded card; capitalize Type field
