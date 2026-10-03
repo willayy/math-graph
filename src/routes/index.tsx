@@ -736,7 +736,7 @@ function Index() {
         </button>
         <button
           onClick={toggleFloating}
-          className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
+          className="pointer-events-auto ml-2 mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
         >
           {floating ? "Disable floating" : "Enable floating"}
         </button>
