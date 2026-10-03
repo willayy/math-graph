@@ -477,6 +477,8 @@ function forceStep(
   return moving ? next : nodes; // same array => no re-render once settled
 }
 
+const LAYOUT_KEY = "mathgraph-layout-v1";
+
 function Index() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -487,8 +489,50 @@ function Index() {
   );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
   const vels = useRef(new Map<string, Vel>());
+  const pinnedRef = useRef(new Set<string>());
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  const saveLayout = (ns: Node<CardData>[]) => {
+    const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
+    for (const n of ns)
+      layout[n.id] = { x: n.position.x, y: n.position.y, pinned: pinnedRef.current.has(n.id) };
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+  };
+
+  function togglePin(id: string) {
+    setNodes((ns) => {
+      if (pinnedRef.current.has(id)) pinnedRef.current.delete(id);
+      else pinnedRef.current.add(id);
+      const next = ns.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, pinned: pinnedRef.current.has(id) } } : n,
+      );
+      saveLayout(next); // pinning always persists immediately
+      return next;
+    });
+  }
+
+  // Restore the saved layout (positions + pins) when the graph first loads
   useEffect(() => {
-    if (graph) setNodes(graph.nodes);
+    if (!graph) return;
+    let saved: Record<string, { x: number; y: number; pinned: boolean }> = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
+    } catch {
+      saved = {};
+    }
+    pinnedRef.current = new Set(
+      Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
+    );
+    setNodes(
+      graph.nodes.map((n) => {
+        const s = saved[n.id];
+        return {
+          ...n,
+          position: s ? { x: s.x, y: s.y } : n.position,
+          data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
+        };
+      }),
+    );
   }, [graph, setNodes]);
 
   // Animation loop: run the force simulation until it settles
@@ -499,7 +543,7 @@ function Index() {
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      setNodes((ns) => forceStep(ns, simEdges, vels.current));
+      setNodes((ns) => forceStep(ns, simEdges, vels.current, pinnedRef.current));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -589,6 +633,16 @@ function Index() {
             </ul>
           )}
         </div>
+        <button
+          onClick={() => {
+            saveLayout(nodes);
+            setSavedFlash(true);
+            setTimeout(() => setSavedFlash(false), 1500);
+          }}
+          className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
+        >
+          {savedFlash ? "Layout saved ✓" : "Save layout"}
+        </button>
       </header>
       {(isLoading || !mounted) && (
         <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
