@@ -17,6 +17,7 @@ import {
   type NodeProps,
   type OnNodesChange,
   type ReactFlowInstance,
+  useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
@@ -155,6 +156,19 @@ function Card({ data }: NodeProps<Node<CardData>>) {
   const { item, expanded, relations, pinned, onTogglePin, inCollection, onToggleCollection, tracing, onTrace } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   const style = KIND_STYLES[item.kind];
+  const zoomedOut = useStore((st) => st.transform[2] < 0.45);
+  if (zoomedOut) {
+    return (
+      <div
+        className={`flex items-center justify-center rounded-md border border-foreground/80 border-l-8 bg-background p-4 text-center ${style.border}`}
+        style={{ width: NODE_W, height: NODE_H }}
+      >
+        <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+        <span className="line-clamp-3 text-3xl font-semibold leading-tight">{item.name}</span>
+        <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+      </div>
+    );
+  }
   return (
     <div
       className={`cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
@@ -1382,6 +1396,7 @@ function Index() {
       )}
       {mounted && graph && (
         <ReactFlow
+          onlyRenderVisibleElements
           nodes={viewNodes}
           edges={viewEdges}
           onNodesChange={onNodesChange as OnNodesChange<Node>}
