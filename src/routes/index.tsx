@@ -256,53 +256,103 @@ function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }
   return { nodes, edges };
 }
 
-// Gentle physics: nodes repel when their boxes overlap, with damped velocity
-// (kept in a side map) so they feel slightly inert rather than snapping.
+// Force simulation: every pair of boxes repels (stronger when close, hard push
+// when overlapping), connected boxes are pulled by springs toward a resting
+// left-to-right offset, and a weak pull keeps the graph centred. Velocities are
+// damped so the layout settles into equilibrium; dragged boxes stay pinned.
 type Vel = { vx: number; vy: number };
+type SimEdge = { source: string; target: string };
 
-function repelStep(nodes: Node<CardData>[], vels: Map<string, Vel>): Node<CardData>[] {
-  let anyOverlap = false;
-  const delta = new Map<string, { x: number; y: number }>();
+const REPULSION = 60000; // inverse-square strength
+const REPULSE_RANGE = 700;
+const SPRING_K = 0.004;
+const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
+const GRAVITY = 0.0008;
+const DAMPING = 0.85;
+const MAX_SPEED = 30;
+const REST_SPEED = 0.03;
+
+function forceStep(
+  nodes: Node<CardData>[],
+  edges: SimEdge[],
+  vels: Map<string, Vel>,
+): Node<CardData>[] {
+  if (nodes.length === 0) return nodes;
+  const idx = new Map(nodes.map((n, i) => [n.id, i]));
+  const fx = new Float64Array(nodes.length);
+  const fy = new Float64Array(nodes.length);
+  const cx = (n: Node) => n.position.x + NODE_W / 2;
+  const cy = (n: Node) => n.position.y + NODE_H / 2;
+
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const a = nodes[i]!;
       const b = nodes[j]!;
-      const dx = b.position.x - a.position.x;
-      const dy = b.position.y - a.position.y;
+      let dx = cx(b) - cx(a);
+      let dy = cy(b) - cy(a);
+      if (dx === 0 && dy === 0) {
+        dx = Math.random() - 0.5;
+        dy = Math.random() - 0.5;
+      }
+      const dist = Math.hypot(dx, dy);
+      if (dist > REPULSE_RANGE) continue;
+      let f = REPULSION / (dist * dist);
       const overlapX = NODE_W + 24 - Math.abs(dx);
       const overlapY = NODE_H + 24 - Math.abs(dy);
-      if (overlapX > 0 && overlapY > 0) {
-        anyOverlap = true;
-        const push = 0.05;
-        const da = delta.get(a.id) ?? { x: 0, y: 0 };
-        const db = delta.get(b.id) ?? { x: 0, y: 0 };
-        if (overlapX < overlapY) {
-          const f = overlapX * push * (dx >= 0 ? 1 : -1);
-          da.x -= f;
-          db.x += f;
-        } else {
-          const f = overlapY * push * (dy >= 0 ? 1 : -1);
-          da.y -= f;
-          db.y += f;
-        }
-        delta.set(a.id, da);
-        delta.set(b.id, db);
-      }
+      if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.15;
+      const ux = dx / dist;
+      const uy = dy / dist;
+      fx[i]! -= f * ux;
+      fy[i]! -= f * uy;
+      fx[j]! += f * ux;
+      fy[j]! += f * uy;
     }
   }
-  if (!anyOverlap) {
-    vels.clear();
-    return nodes;
+
+  for (const e of edges) {
+    const i = idx.get(e.source);
+    const j = idx.get(e.target);
+    if (i === undefined || j === undefined) continue;
+    const a = nodes[i]!;
+    const b = nodes[j]!;
+    const ex = cx(b) - cx(a) - REST_DX;
+    const ey = cy(b) - cy(a);
+    fx[i]! += ex * SPRING_K;
+    fy[i]! += ey * SPRING_K;
+    fx[j]! -= ex * SPRING_K;
+    fy[j]! -= ey * SPRING_K;
   }
-  const damping = 0.82;
-  return nodes.map((n) => {
-    const d = delta.get(n.id);
+
+  let mx = 0;
+  let my = 0;
+  for (const n of nodes) {
+    mx += cx(n);
+    my += cy(n);
+  }
+  mx /= nodes.length;
+  my /= nodes.length;
+
+  let moving = false;
+  const next = nodes.map((n, i) => {
+    if (n.dragging) {
+      vels.set(n.id, { vx: 0, vy: 0 });
+      moving = true;
+      return n;
+    }
     const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
-    if (!d && Math.abs(v.vx) < 0.05 && Math.abs(v.vy) < 0.05) return n;
-    const nv = { vx: (v.vx + (d?.x ?? 0)) * damping, vy: (v.vy + (d?.y ?? 0)) * damping };
-    vels.set(n.id, nv);
-    return { ...n, position: { x: n.position.x + nv.vx, y: n.position.y + nv.vy } };
+    let vx = (v.vx + fx[i]! + (mx - cx(n)) * GRAVITY) * DAMPING;
+    let vy = (v.vy + fy[i]! + (my - cy(n)) * GRAVITY) * DAMPING;
+    const sp = Math.hypot(vx, vy);
+    if (sp > MAX_SPEED) {
+      vx = (vx / sp) * MAX_SPEED;
+      vy = (vy / sp) * MAX_SPEED;
+    }
+    vels.set(n.id, { vx, vy });
+    if (sp < REST_SPEED) return n;
+    moving = true;
+    return { ...n, position: { x: n.position.x + vx, y: n.position.y + vy } };
   });
+  return moving ? next : nodes; // same array => no re-render once settled
 }
 
 function Index() {
@@ -316,16 +366,20 @@ function Index() {
     if (graph) setNodes(graph.nodes);
   }, [graph, setNodes]);
 
-  // Animation loop: keep nudging while any boxes overlap
+  // Animation loop: run the force simulation until it settles
+  const simEdges = useMemo<SimEdge[]>(
+    () => (graph ? graph.edges.map((e) => ({ source: e.source, target: e.target })) : []),
+    [graph],
+  );
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      setNodes((ns) => repelStep(ns, vels.current));
+      setNodes((ns) => forceStep(ns, simEdges, vels.current));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [setNodes]);
+  }, [setNodes, simEdges]);
 
   const toggleExpand = (id: string) =>
     setNodes((ns) =>
