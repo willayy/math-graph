@@ -1148,57 +1148,28 @@ function Index() {
           >
             {floating ? "Disable floating" : "Enable floating"}
           </button>
-          <div className="relative">
-            <select
-              value={activeId}
-              onChange={(e) => {
-                setActiveId(e.target.value);
-                if (!e.target.value) setShowOnly(false);
-              }}
-              style={{ textAlignLast: "center" }}
-              className="w-full appearance-none rounded-md border border-border bg-background px-9 py-1.5 text-center text-foreground shadow-sm"
-            >
-              <option value="">No collection</option>
-              {collections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.ids.length})
-                </option>
-              ))}
-            </select>
-            <svg
-              className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </div>
-          <button
-            onClick={newCollection}
-            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-          >
-            New collection
-          </button>
-          {active && (
-            <button
-              onClick={() => setShowOnly((v) => !v)}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-            >
-              {showOnly ? "Show all nodes" : "Show only this collection"}
-            </button>
-          )}
-          {active && (
-            <button
-              onClick={deleteCollection}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-            >
-              Delete collection
-            </button>
-          )}
+          <CollectionsMenu
+            collections={collections}
+            activeId={activeId}
+            activeName={active?.name}
+            showOnly={showOnly}
+            onSelect={(id) => {
+              setActiveId(id);
+              if (!id) setShowOnly(false);
+              setCollOpen(false);
+            }}
+            onToggleShowOnly={() => setShowOnly((v) => !v)}
+            onNew={() => {
+              setCollOpen(false);
+              newCollection();
+            }}
+            onDelete={() => {
+              setCollOpen(false);
+              deleteCollection();
+            }}
+            open={collOpen}
+            setOpen={setCollOpen}
+          />
           {active && (
             <p className="text-[11px] leading-snug text-muted-foreground">
               Click the bookmark on a box to add it to or remove it from “{active.name}”.
