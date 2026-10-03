@@ -70,7 +70,7 @@ async function fetchGraph() {
   results.forEach((r, i) => {
     if (r.error) throw r.error;
     for (const row of (r.data ?? []) as unknown as Row[])
-      items.push({ ...row, kind: tables[i][1] });
+      items.push({ ...row, kind: tables[i]![1] });
   });
   const uses = await supabase.from("theorem_uses").select("theorem_id, used_id");
   if (uses.error) throw uses.error;
