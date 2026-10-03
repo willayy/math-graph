@@ -932,7 +932,7 @@ function Index() {
           )}
         </div>
       </div>
-      <div className="pointer-events-auto absolute bottom-0 left-0 z-10 p-6 text-xs text-muted-foreground">
+      <div className="pointer-events-auto absolute bottom-0 right-0 z-10 p-6 text-xs text-muted-foreground">
         {userId ? (
           <span>
             Signed in as {email} — your layout is saved to your account.{" "}
