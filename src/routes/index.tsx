@@ -1290,7 +1290,7 @@ function Index() {
       if (!node || !flow) return;
       const compact = window.innerWidth < 768;
       const height = node.measured?.height ?? NODE_H;
-      const width = node.measured?.width ?? (node.data.expanded ? 340 : NODE_W);
+      const width = node.measured?.width ?? (node.data['expanded'] ? 340 : NODE_W);
       const availableHeight = window.innerHeight - (compact ? 280 : 100);
       const zoom = Math.max(0.65, Math.min(compact ? 1 : 1.15, availableHeight / height, (window.innerWidth - 48) / width));
       // On small screens the controls occupy the top, so frame the card below them.
