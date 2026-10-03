@@ -12,3 +12,5 @@
 - [x] Group relations by type in expanded card; capitalize Type field
 - [x] Toggle to disable the floating physics
 - [x] Prevent edge crossings (untangle force in sim)
+- [x] Remove Goldbach Conjecture
+- [x] Add all Euclid postulates + common notions as axioms
