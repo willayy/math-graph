@@ -17,4 +17,4 @@
 - [x] Collections of nodes + show only a collection
 - [x] Auto-save settled layout so refresh doesn't re-settle
 - [x] Clustering forces: same-set boxes pull together, same-kind weaker pull
-- [ ] Stronger repulsion so nodes stop looking glued together
+- [x] Stronger repulsion so nodes stop looking glued together
