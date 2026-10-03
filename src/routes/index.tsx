@@ -707,25 +707,22 @@ function Index() {
     let cancelled = false;
     (async () => {
       let saved: Record<string, { x: number; y: number; pinned: boolean }> = {};
-      let fl = true;
       let cols: Collection[] = [];
       if (userId) {
         const { data: row } = await supabase
           .from("user_preferences" as never)
-          .select("layout, floating, collections")
+          .select("layout, collections")
           .eq("user_id", userId)
           .maybeSingle();
-        const r = row as { layout: typeof saved; floating: boolean; collections: Collection[] } | null;
+        const r = row as { layout: typeof saved; collections: Collection[] } | null;
         cols = r?.collections ?? [];
         saved = r?.layout ?? {};
-        fl = r?.floating ?? true;
       } else {
         try {
           saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
         } catch {
           saved = {};
         }
-        fl = localStorage.getItem(FLOATING_KEY) !== "off";
         try {
           cols = JSON.parse(localStorage.getItem(COLLECTIONS_KEY) ?? "[]");
         } catch {
@@ -736,8 +733,6 @@ function Index() {
       setCollections(cols);
       setActiveId("");
       setShowOnly(false);
-      floatingRef.current = fl;
-      setFloating(fl);
       pinnedRef.current = new Set(
         Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
       );
