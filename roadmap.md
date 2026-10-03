@@ -24,3 +24,4 @@
 - [x] Calm the jittery force simulation (cooling, centre-based clustering)
 - [x] Put Book III entries in their own set
 - [x] Dropdown: centered text, arrow on the right
+- [x] More space between boxes

@@ -476,17 +476,17 @@ function buildGraph(
 type Vel = { vx: number; vy: number };
 type SimEdge = { source: string; target: string };
 
-const REPULSION = 340000; // inverse-square strength — dominates all other forces
-const REPULSE_RANGE = 700;
+const REPULSION = 700000; // inverse-square strength — dominates all other forces
+const REPULSE_RANGE = 1200;
 const SPRING_K = 0.004;
 const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
-const GRAVITY = 0.003;
+const GRAVITY = 0.0012;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
 const UNTANGLE = 4; // gentle push between crossing edges
-const SET_PULL = 0.004; // pull toward the centre of each set the box belongs to
-const KIND_PULL = 0.0015; // weaker pull toward the centre of the box's kind
+const SET_PULL = 0.002; // pull toward the centre of each set the box belongs to
+const KIND_PULL = 0.0008; // weaker pull toward the centre of the box's kind
 const ALPHA_DECAY = 0.985; // "temperature" cools every frame so the graph always settles
 const ALPHA_MIN = 0.004;
 
@@ -539,9 +539,9 @@ function forceStep(
       const dist = Math.max(raw, 60); // clamp: avoids huge forces at tiny distances
       const fade = 1 - raw / REPULSE_RANGE; // smooth falloff, no jump at the range edge
       let f = (REPULSION / (dist * dist)) * fade * fade;
-      const overlapX = NODE_W + 24 - Math.abs(dx);
-      const overlapY = NODE_H + 24 - Math.abs(dy);
-      if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.15;
+      const overlapX = NODE_W + 60 - Math.abs(dx);
+      const overlapY = NODE_H + 60 - Math.abs(dy);
+      if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.4;
       const ux = dx / dist;
       const uy = dy / dist;
       fx[i]! -= f * ux;
