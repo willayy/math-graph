@@ -33,13 +33,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "MathGraph maps mathematics as it actually is: axioms, definitions, theorems, lemmas and proofs connected by what they use and what they lead to.",
+          "MathGraph maps mathematics as it actually is: axioms, definitions, theorems and proofs connected by what they use and what they lead to.",
       },
       { property: "og:title", content: "MathGraph — the dependency graph of mathematics" },
       {
         property: "og:description",
         content:
-          "Axioms, definitions, theorems, lemmas and proofs — connected by what they use and what they lead to.",
+          "Axioms, definitions, theorems and proofs — connected by what they use and what they lead to.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -48,7 +48,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-type Kind = "axiom" | "definition" | "conjecture" | "theorem" | "lemma" | "proof";
+type Kind = "axiom" | "definition" | "conjecture" | "theorem" | "proof";
 type Row = {
   id: string;
   date: string | null;
@@ -85,7 +85,6 @@ async function fetchGraph() {
     ["definitions", "definition"],
     ["conjectures", "conjecture"],
     ["theorems", "theorem"],
-    ["lemmas", "lemma"],
     ["proofs", "proof"],
   ] as const;
   const results = await Promise.all(
@@ -149,7 +148,6 @@ const KIND_STYLES: Record<Kind, { border: string; label: string; chip: string }>
   definition: { border: "border-l-sky-500", label: "text-sky-600", chip: "bg-sky-500" },
   conjecture: { border: "border-l-rose-500", label: "text-rose-600", chip: "bg-rose-500" },
   theorem: { border: "border-l-emerald-500", label: "text-emerald-600", chip: "bg-emerald-500" },
-  lemma: { border: "border-l-violet-500", label: "text-violet-600", chip: "bg-violet-500" },
   proof: { border: "border-l-slate-500", label: "text-slate-600", chip: "bg-slate-500" },
 };
 
@@ -466,9 +464,6 @@ function EdgeMarkers() {
         <marker id="mg-proof" {...common} refX={0}>
           <rect x="-11" y="-5.5" width="11" height="11" fill="currentColor" />
         </marker>
-        <marker id="mg-lemma" {...common} refX={0}>
-          <circle cx="-6" cy="0" r="5" fill="var(--background)" stroke="currentColor" strokeWidth="1.8" />
-        </marker>
       </defs>
     </svg>
   );
@@ -504,10 +499,10 @@ function buildGraph(
     }
   }
   for (const i of items) {
-    if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id)) {
+    if (i.kind === "proof" && i.theorem_id && byId.has(i.theorem_id)) {
       const theorem = byId.get(i.theorem_id)!;
-      relate(i.id, i.kind === "lemma" ? "Lemma of" : "Proof of", theorem.name);
-      relate(theorem.id, i.kind === "lemma" ? "Lemmas" : "Proofs", i.name);
+      relate(i.id, "Proof of", theorem.name);
+      relate(theorem.id, "Proofs", i.name);
     }
   }
   for (const se of setElements) {
@@ -527,7 +522,7 @@ function buildGraph(
     if (it.kind === "theorem") {
       const ds = deps.get(id) ?? [];
       d = ds.length ? 1 + Math.max(...ds.map((x) => visit(x, stack))) : 1;
-    } else if ((it.kind === "lemma" || it.kind === "proof") && it.theorem_id && byId.has(it.theorem_id)) {
+    } else if (it.kind === "proof" && it.theorem_id && byId.has(it.theorem_id)) {
       d = visit(it.theorem_id, stack) + 1;
     }
     depth.set(id, d);
@@ -549,7 +544,7 @@ function buildGraph(
   };
   for (const [t, ds] of deps) for (const d of ds) link(d, t);
   for (const i of items)
-    if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id))
+    if (i.kind === "proof" && i.theorem_id && byId.has(i.theorem_id))
       link(i.theorem_id, i.id);
 
   // Barycenter ordering: repeatedly sort each column by the average position
@@ -591,7 +586,7 @@ function buildGraph(
 
   // Each relation type gets its own arrowhead (SVG markers defined in EdgeMarkers).
   const markerFor = (label: string) =>
-    label === "has proof" ? "mg-proof" : label === "has lemma" ? "mg-lemma" : "mg-uses";
+    label === "has proof" ? "mg-proof" : "mg-uses";
   const edge = (source: string, target: string, label: string, dashed = false, startLabel?: string): Edge => ({
     id: `${source}-${target}`,
     source,
@@ -608,8 +603,8 @@ function buildGraph(
   const raw: { source: string; target: string; label: string; dashed: boolean }[] = [];
   for (const [t, ds] of deps) for (const d of ds) raw.push({ source: d, target: t, label: "is used by", dashed: false });
   for (const i of items)
-    if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id))
-      raw.push({ source: i.theorem_id, target: i.id, label: i.kind === "proof" ? "has proof" : "has lemma", dashed: true });
+    if (i.kind === "proof" && i.theorem_id && byId.has(i.theorem_id))
+      raw.push({ source: i.theorem_id, target: i.id, label: "has proof", dashed: true });
   const edges: Edge[] = [];
   const merged = new Set<string>();
   for (const r of raw) {
@@ -1075,7 +1070,7 @@ function Index() {
     // Definition edges are always dotted, and lemmas are never canonical
     // results — only theorems and proofs can carry the canonical mark.
     const kindOf = (id: string) => graph?.nodes.find((n) => n.id === id)?.data.item.kind;
-    if (kindOf(e.source) === "definition" || kindOf(e.source) === "lemma" || kindOf(e.target) === "lemma") return;
+    if (kindOf(e.source) === "definition") return;
     const isStrong = strongEdges.includes(e.id);
     const ends = (id: string) => graph?.edges.find((x) => x.id === id);
     const isProof = (x?: Edge) => (x?.data as { relation?: string } | undefined)?.relation === "has proof";
@@ -1470,7 +1465,6 @@ function Index() {
           {[
             ["mg-uses", "used by"],
             ["mg-proof", "proved by"],
-            ["mg-lemma", "has lemma"],
           ].map(([m, t]) => (
             <span key={m} className="flex items-center gap-1.5">
               <svg width="34" height="14" className="text-foreground">

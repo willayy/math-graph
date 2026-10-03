@@ -17,7 +17,7 @@ export const Route = createFileRoute("/history")({
 });
 
 const TABLE_LABEL: Record<string, string> = {
-  axioms: "axiom", definitions: "definition", theorems: "theorem", lemmas: "lemma", proofs: "proof",
+  axioms: "axiom", definitions: "definition", theorems: "theorem", proofs: "proof",
   conjectures: "conjecture", sets: "set", submissions: "submission", submission_votes: "vote", submission_comments: "comment",
 };
 const ACTION_LABEL: Record<string, string> = {

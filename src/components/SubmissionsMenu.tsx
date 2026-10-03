@@ -4,11 +4,11 @@ import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
-type Kind = "axiom" | "definition" | "conjecture" | "theorem" | "lemma" | "proof";
+type Kind = "axiom" | "definition" | "conjecture" | "theorem" | "proof";
 type GraphItem = { id: string; name: string; kind: Kind };
-type Relation = "uses" | "proof_of" | "lemma_of";
+type Relation = "uses" | "proof_of";
 
-const KINDS: Kind[] = ["axiom", "definition", "theorem", "lemma", "proof", "conjecture"];
+const KINDS: Kind[] = ["axiom", "definition", "theorem", "proof", "conjecture"];
 const NEEDED = 3;
 
 async function fetchReview() {
@@ -128,14 +128,14 @@ function NewSubmission({ userId, items, onDone }: { userId: string; items: Graph
   const [links, setLinks] = useState<{ relation: Relation; id: string }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const relations: Relation[] = f.kind === "theorem" ? ["uses"] : f.kind === "proof" ? ["proof_of"] : f.kind === "lemma" ? ["lemma_of"] : [];
-  const relLabel: Record<Relation, string> = { uses: "Uses", proof_of: "Proof of", lemma_of: "Lemma of" };
+  const relations: Relation[] = f.kind === "theorem" ? ["uses"] : f.kind === "proof" ? ["proof_of"] : [];
+  const relLabel: Record<Relation, string> = { uses: "Uses", proof_of: "Proof of" };
   const targets = (r: Relation) => items.filter((i) => (r === "uses" ? i.kind !== "proof" : i.kind === "theorem"));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    if ((f.kind === "proof" || f.kind === "lemma") && !links.length) return setErr("Pick the theorem this belongs to.");
+    if (f.kind === "proof" && !links.length) return setErr("Pick the theorem this belongs to.");
     setBusy(true);
     const { data, error } = await supabase
       .from("submissions")
@@ -251,7 +251,7 @@ function SubmissionView(props: { id: string; data: Review; items: GraphItem[]; u
         {s.creator && (<><dt className="text-muted-foreground">Creator</dt><dd>{s.creator}</dd></>)}
         {s.date && (<><dt className="text-muted-foreground">Date</dt><dd>{s.date}</dd></>)}
         {s.citation && (<><dt className="text-muted-foreground">Citation</dt><dd>{s.citation}</dd></>)}
-        {links.map((l) => (<Fragment key={l.id}><dt className="text-muted-foreground">{l.relation === "uses" ? "Uses" : l.relation === "proof_of" ? "Proof of" : "Lemma of"}</dt><dd>{items.find((i) => i.id === l.target_id)?.name ?? "?"}</dd></Fragment>))}
+        {links.map((l) => (<Fragment key={l.id}><dt className="text-muted-foreground">{l.relation === "uses" ? "Uses" : "Proof of"}</dt><dd>{items.find((i) => i.id === l.target_id)?.name ?? "?"}</dd></Fragment>))}
       </dl>
       {votes.length > 0 && (
         <div className="text-xs">

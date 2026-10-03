@@ -4,7 +4,7 @@ export const Route = createFileRoute("/about")({
   head: () => ({
     meta: [
       { title: "About MathGraph — and how to contribute" },
-      { name: "description", content: "MathGraph maps mathematics as a connected graph of axioms, definitions, theorems, lemmas and proofs. Learn how to contribute." },
+      { name: "description", content: "MathGraph maps mathematics as a connected graph of axioms, definitions, theorems and proofs. Learn how to contribute." },
       { property: "og:title", content: "About MathGraph" },
       { property: "og:description", content: "Why mathematics is a graph, not a list of facts — and how you can add to it." },
       { property: "og:type", content: "website" },
@@ -22,8 +22,8 @@ function AboutPage() {
         <Link to="/" className="text-sm underline">Back to graph</Link>
       </div>
       <section className="space-y-3">
-        <p>Mathematics is built step by step: axioms and definitions lead to lemmas, lemmas to theorems, and every theorem rests on a proof. Yet theorems are usually taught as isolated facts.</p>
-        <p>MathGraph shows the structure instead. Every box is an axiom, definition, theorem, lemma, proof or conjecture, and every line shows what depends on what. Click a box to see its statement, its source and how it connects to the rest.</p>
+        <p>Mathematics is built step by step: axioms and definitions lead to theorems, theorems to further theorems, and every theorem rests on a proof. Yet theorems are usually taught as isolated facts.</p>
+        <p>MathGraph shows the structure instead. Every box is an axiom, definition, theorem, proof or conjecture, and every line shows what depends on what. Click a box to see its statement, its source and how it connects to the rest.</p>
       </section>
       <section className="space-y-3">
         <h2 className="text-xl font-semibold">Anyone can explore</h2>
