@@ -478,6 +478,7 @@ function forceStep(
 }
 
 const LAYOUT_KEY = "mathgraph-layout-v1";
+const FLOATING_KEY = "mathgraph-floating";
 
 function Index() {
   const [mounted, setMounted] = useState(false);
@@ -491,6 +492,16 @@ function Index() {
   const vels = useRef(new Map<string, Vel>());
   const pinnedRef = useRef(new Set<string>());
   const [savedFlash, setSavedFlash] = useState(false);
+  const [floating, setFloating] = useState(
+    () => localStorage.getItem(FLOATING_KEY) !== "off",
+  );
+  const floatingRef = useRef(floating);
+  const toggleFloating = () => {
+    const next = !floatingRef.current;
+    floatingRef.current = next;
+    setFloating(next);
+    localStorage.setItem(FLOATING_KEY, next ? "on" : "off");
+  };
 
   const saveLayout = (ns: Node<CardData>[]) => {
     const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
@@ -546,7 +557,8 @@ function Index() {
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      setNodes((ns) => forceStep(ns, simEdges, vels.current, pinnedRef.current));
+      if (floatingRef.current)
+        setNodes((ns) => forceStep(ns, simEdges, vels.current, pinnedRef.current));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -645,6 +657,12 @@ function Index() {
           className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
         >
           {savedFlash ? "Layout saved ✓" : "Save layout"}
+        </button>
+        <button
+          onClick={toggleFloating}
+          className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
+        >
+          {floating ? "Disable floating" : "Enable floating"}
         </button>
       </header>
       {(isLoading || !mounted) && (
