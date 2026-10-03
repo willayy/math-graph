@@ -894,7 +894,7 @@ function Index() {
               setActiveId(e.target.value);
               if (!e.target.value) setShowOnly(false);
             }}
-            className="rounded-md border border-border bg-background px-2 py-1.5 text-foreground shadow-sm"
+            className="rounded-md border border-border bg-background px-2 pr-9 py-1.5 text-center text-foreground shadow-sm"
           >
             <option value="">No collection</option>
             {collections.map((c) => (
