@@ -161,3 +161,18 @@
 .react-flow__edge-textbg {
   fill: var(--background);
 }
+
+/* Keep boxes mounted while changing scale so zooming into a set feels continuous. */
+.react-flow__nodes,
+.react-flow__edges {
+  transition: opacity 280ms ease;
+}
+.react-flow.set-overview .react-flow__nodes,
+.react-flow.set-overview .react-flow__edges {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__nodes,
+  .react-flow__edges { transition: none; }
+}
