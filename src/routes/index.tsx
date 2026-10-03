@@ -572,7 +572,6 @@ function forceStep(
 }
 
 const LAYOUT_KEY = "mathgraph-layout-v1";
-const FLOATING_KEY = "mathgraph-floating";
 const COLLECTIONS_KEY = "mathgraph-collections";
 
 function Index() {
@@ -607,7 +606,7 @@ function Index() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-  const persist = (patch: { layout?: unknown; floating?: boolean; collections?: Collection[] }) => {
+  const persist = (patch: { layout?: unknown; collections?: Collection[] }) => {
     const uid = userIdRef.current;
     if (uid) {
       void supabase
@@ -615,18 +614,17 @@ function Index() {
         .upsert({ user_id: uid, ...patch, updated_at: new Date().toISOString() } as never);
     } else {
       if (patch.layout !== undefined) localStorage.setItem(LAYOUT_KEY, JSON.stringify(patch.layout));
-      if (patch.floating !== undefined) localStorage.setItem(FLOATING_KEY, patch.floating ? "on" : "off");
       if (patch.collections !== undefined)
         localStorage.setItem(COLLECTIONS_KEY, JSON.stringify(patch.collections));
     }
   };
+  // Floating always starts enabled on each visit; the toggle lasts for the session.
   const [floating, setFloating] = useState(true);
   const floatingRef = useRef(floating);
   const toggleFloating = () => {
     const next = !floatingRef.current;
     floatingRef.current = next;
     setFloating(next);
-    persist({ floating: next });
   };
 
   // Collections: named groups of nodes; optionally show only the active one
@@ -709,25 +707,22 @@ function Index() {
     let cancelled = false;
     (async () => {
       let saved: Record<string, { x: number; y: number; pinned: boolean }> = {};
-      let fl = true;
       let cols: Collection[] = [];
       if (userId) {
         const { data: row } = await supabase
           .from("user_preferences" as never)
-          .select("layout, floating, collections")
+          .select("layout, collections")
           .eq("user_id", userId)
           .maybeSingle();
-        const r = row as { layout: typeof saved; floating: boolean; collections: Collection[] } | null;
+        const r = row as { layout: typeof saved; collections: Collection[] } | null;
         cols = r?.collections ?? [];
         saved = r?.layout ?? {};
-        fl = r?.floating ?? true;
       } else {
         try {
           saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
         } catch {
           saved = {};
         }
-        fl = localStorage.getItem(FLOATING_KEY) !== "off";
         try {
           cols = JSON.parse(localStorage.getItem(COLLECTIONS_KEY) ?? "[]");
         } catch {
@@ -738,8 +733,6 @@ function Index() {
       setCollections(cols);
       setActiveId("");
       setShowOnly(false);
-      floatingRef.current = fl;
-      setFloating(fl);
       pinnedRef.current = new Set(
         Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
       );
@@ -876,30 +869,32 @@ function Index() {
             </ul>
           )}
         </div>
-        <button
-          onClick={() => {
-            saveLayout(nodes);
-            setSavedFlash(true);
-            setTimeout(() => setSavedFlash(false), 1500);
-          }}
-          className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
-        >
-          {savedFlash ? "Layout saved ✓" : "Save layout"}
-        </button>
-        <button
-          onClick={toggleFloating}
-          className="pointer-events-auto ml-2 mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
-        >
-          {floating ? "Disable floating" : "Enable floating"}
-        </button>
-        <div className="pointer-events-auto mt-2 flex flex-wrap items-center gap-2 text-xs">
+      </header>
+      <div className="absolute right-0 top-0 z-10 w-60 p-6">
+        <div className="pointer-events-auto flex flex-col gap-2 text-xs">
+          <button
+            onClick={() => {
+              saveLayout(nodes);
+              setSavedFlash(true);
+              setTimeout(() => setSavedFlash(false), 1500);
+            }}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+          >
+            {savedFlash ? "Layout saved ✓" : "Save layout"}
+          </button>
+          <button
+            onClick={toggleFloating}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+          >
+            {floating ? "Disable floating" : "Enable floating"}
+          </button>
           <select
             value={activeId}
             onChange={(e) => {
               setActiveId(e.target.value);
               if (!e.target.value) setShowOnly(false);
             }}
-            className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground shadow-sm"
+            className="rounded-md border border-border bg-background px-2 py-1.5 text-foreground shadow-sm"
           >
             <option value="">No collection</option>
             {collections.map((c) => (
@@ -915,39 +910,42 @@ function Index() {
             New collection
           </button>
           {active && (
-            <>
-              <button
-                onClick={() => setShowOnly((v) => !v)}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-              >
-                {showOnly ? "Show all nodes" : "Show only this collection"}
-              </button>
-              <button onClick={deleteCollection} className="text-muted-foreground underline">
-                Delete
-              </button>
-            </>
+            <button
+              onClick={() => setShowOnly((v) => !v)}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+            >
+              {showOnly ? "Show all nodes" : "Show only this collection"}
+            </button>
+          )}
+          {active && (
+            <button
+              onClick={deleteCollection}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+            >
+              Delete collection
+            </button>
+          )}
+          {active && (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Click the bookmark on a box to add it to or remove it from “{active.name}”.
+            </p>
           )}
         </div>
-        {active && (
-          <p className="mt-1 max-w-sm text-[11px] text-muted-foreground">
-            Click the bookmark on a box to add it to or remove it from “{active.name}”.
-          </p>
+      </div>
+      <div className="pointer-events-auto absolute bottom-0 right-0 z-10 p-6 text-xs text-muted-foreground">
+        {userId ? (
+          <span>
+            Signed in as {email} — your layout is saved to your account.{" "}
+            <button onClick={() => supabase.auth.signOut()} className="underline">
+              Sign out
+            </button>
+          </span>
+        ) : (
+          <span>
+            <Link to="/auth" className="underline">Sign in</Link> to keep your layout on any device.
+          </span>
         )}
-        <div className="pointer-events-auto mt-2 text-xs text-muted-foreground">
-          {userId ? (
-            <span>
-              Signed in as {email} — your layout is saved to your account.{" "}
-              <button onClick={() => supabase.auth.signOut()} className="underline">
-                Sign out
-              </button>
-            </span>
-          ) : (
-            <span>
-              <Link to="/auth" className="underline">Sign in</Link> to keep your layout on any device.
-            </span>
-          )}
-        </div>
-      </header>
+      </div>
       {(isLoading || !mounted) && (
         <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
       )}
