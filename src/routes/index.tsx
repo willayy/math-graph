@@ -319,7 +319,7 @@ const edgeTypes = { floating: FloatingEdge };
 function CollectionsMenu(props: {
   collections: Collection[];
   activeId: string;
-  activeName?: string;
+  activeName: string | undefined;
   showOnly: boolean;
   open: boolean;
   setOpen: (v: boolean) => void;
