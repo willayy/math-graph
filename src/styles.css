@@ -142,3 +142,22 @@
     color: var(--color-foreground);
   }
 }
+
+/* Edge labels: hidden until the edge is hovered */
+.react-flow__edge-textbg,
+.react-flow__edge-text {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+.react-flow__edge:hover .react-flow__edge-textbg,
+.react-flow__edge:hover .react-flow__edge-text {
+  opacity: 1;
+}
+.react-flow__edge-text {
+  font-size: 11px;
+  fill: var(--foreground);
+}
+.react-flow__edge-textbg {
+  fill: var(--background);
+}
