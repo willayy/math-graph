@@ -34,3 +34,4 @@
 - [ ] Only verified university emails can submit/vote
 - [ ] Global change history tab
 - [ ] Real names visible on every account/action
+- [ ] About page: what MathGraph is, how to contribute
