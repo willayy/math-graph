@@ -193,6 +193,7 @@ function Index() {
           edges={graph.edges}
           nodeTypes={nodeTypes}
           fitView
+          fitViewOptions={{ padding: 0.2 }}
           minZoom={0.2}
           nodesConnectable={false}
           proOptions={{ hideAttribution: true }}
