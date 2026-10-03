@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -8,13 +8,16 @@ import {
   Handle,
   Position,
   MarkerType,
+  useNodesState,
   type Node,
   type Edge,
   type NodeProps,
+  type OnNodesChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
+import { renderLatex } from "@/lib/latex.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -49,7 +52,7 @@ type Row = {
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
-type CardData = { item: Item };
+type CardData = { item: Item; expanded?: boolean };
 
 const NODE_W = 260;
 const COL_GAP = 120;
@@ -79,13 +82,51 @@ async function fetchGraph() {
   return { items, uses: uses.data ?? [] };
 }
 
+// Splits text into plain and $...$ math segments
+function splitMath(text: string): { text: string; math: boolean }[] {
+  const parts: { text: string; math: boolean }[] = [];
+  const re = /\$([^$]+)\$/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push({ text: text.slice(last, m.index), math: false });
+    parts.push({ text: m[1]!, math: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), math: false });
+  return parts;
+}
+
+function Latex({ tex }: { tex: string }) {
+  const { data } = useQuery({
+    queryKey: ["latex", tex],
+    queryFn: () => renderLatex({ data: { tex } }),
+    staleTime: Infinity,
+  });
+  if (!data) return <span className="text-muted-foreground">{tex}</span>;
+  // Server-rendered SVG served to the node as an image
+  const src = `data:image/svg+xml;utf8,${encodeURIComponent(data.svg)}`;
+  return <img src={src} alt={tex} className="inline-block h-[1.2em] w-auto align-[-0.2em]" />;
+}
+
+function RichText({ text }: { text: string }) {
+  const parts = useMemo(() => splitMath(text), [text]);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.math ? <Latex key={i} tex={p.text} /> : <span key={i}>{p.text}</span>,
+      )}
+    </>
+  );
+}
+
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item } = data;
+  const { item, expanded } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   return (
     <div
-      className="rounded-md border border-foreground/80 bg-background p-3 text-left shadow-sm"
-      style={{ width: NODE_W }}
+      className="cursor-pointer rounded-md border border-foreground/80 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md"
+      style={{ width: expanded ? 340 : NODE_W }}
     >
       <Handle type="target" position={Position.Left} className="!bg-foreground" />
       <div className="flex items-baseline justify-between gap-2">
@@ -97,13 +138,20 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">
         {item.name}
       </h3>
-      <p className="mt-1 line-clamp-3 text-xs leading-snug text-foreground/75">
-        {item.statement}
+      <p
+        className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
+      >
+        <RichText text={item.statement} />
       </p>
       {item.citation && (
-        <p className="mt-1.5 line-clamp-1 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground">
+        <p
+          className={`mt-1.5 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground ${expanded ? "" : "line-clamp-1"}`}
+        >
           {item.citation}
         </p>
+      )}
+      {expanded && (
+        <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
       )}
       <Handle type="source" position={Position.Right} className="!bg-foreground" />
     </div>
@@ -208,11 +256,84 @@ function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }
   return { nodes, edges };
 }
 
+// Gentle physics: nodes repel when their boxes overlap, with damped velocity
+// (kept in a side map) so they feel slightly inert rather than snapping.
+type Vel = { vx: number; vy: number };
+
+function repelStep(nodes: Node<CardData>[], vels: Map<string, Vel>): Node<CardData>[] {
+  let anyOverlap = false;
+  const delta = new Map<string, { x: number; y: number }>();
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i]!;
+      const b = nodes[j]!;
+      const dx = b.position.x - a.position.x;
+      const dy = b.position.y - a.position.y;
+      const overlapX = NODE_W + 24 - Math.abs(dx);
+      const overlapY = NODE_H + 24 - Math.abs(dy);
+      if (overlapX > 0 && overlapY > 0) {
+        anyOverlap = true;
+        const push = 0.05;
+        const da = delta.get(a.id) ?? { x: 0, y: 0 };
+        const db = delta.get(b.id) ?? { x: 0, y: 0 };
+        if (overlapX < overlapY) {
+          const f = overlapX * push * (dx >= 0 ? 1 : -1);
+          da.x -= f;
+          db.x += f;
+        } else {
+          const f = overlapY * push * (dy >= 0 ? 1 : -1);
+          da.y -= f;
+          db.y += f;
+        }
+        delta.set(a.id, da);
+        delta.set(b.id, db);
+      }
+    }
+  }
+  if (!anyOverlap) {
+    vels.clear();
+    return nodes;
+  }
+  const damping = 0.82;
+  return nodes.map((n) => {
+    const d = delta.get(n.id);
+    const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
+    if (!d && Math.abs(v.vx) < 0.05 && Math.abs(v.vy) < 0.05) return n;
+    const nv = { vx: (v.vx + (d?.x ?? 0)) * damping, vy: (v.vy + (d?.y ?? 0)) * damping };
+    vels.set(n.id, nv);
+    return { ...n, position: { x: n.position.x + nv.vx, y: n.position.y + nv.vy } };
+  });
+}
+
 function Index() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
   const graph = useMemo(() => (data ? buildGraph(data.items, data.uses) : null), [data]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
+  const vels = useRef(new Map<string, Vel>());
+  useEffect(() => {
+    if (graph) setNodes(graph.nodes);
+  }, [graph, setNodes]);
+
+  // Animation loop: keep nudging while any boxes overlap
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      setNodes((ns) => repelStep(ns, vels.current));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [setNodes]);
+
+  const toggleExpand = (id: string) =>
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, expanded: !n.data.expanded } } : n,
+      ),
+    );
+
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -231,7 +352,7 @@ function Index() {
   }, [query, data]);
 
   const goTo = (item: Item) => {
-    const node = graph?.nodes.find((n) => n.id === item.id);
+    const node = nodes.find((n) => n.id === item.id);
     if (!node || !flow) return;
     flow.setCenter(node.position.x + NODE_W / 2, node.position.y + NODE_H / 2, {
       zoom: 1.1,
@@ -294,8 +415,10 @@ function Index() {
       )}
       {mounted && graph && (
         <ReactFlow
-          nodes={graph.nodes}
+          nodes={nodes}
           edges={graph.edges}
+          onNodesChange={onNodesChange as OnNodesChange<Node>}
+          onNodeClick={(_, node) => toggleExpand(node.id)}
           nodeTypes={nodeTypes}
           onInit={setFlow}
           fitView
