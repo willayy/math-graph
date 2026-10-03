@@ -270,7 +270,7 @@ function Index() {
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
   const graph = useMemo(() => (data ? buildGraph(data.items, data.uses) : null), [data]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
   const vels = useRef(new Map<string, Vel>());
   useEffect(() => {
     if (graph) setNodes(graph.nodes);
