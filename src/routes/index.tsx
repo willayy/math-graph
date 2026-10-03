@@ -644,8 +644,9 @@ const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
 const UNTANGLE = 4; // gentle push between crossing edges
-const SET_PULL = 0.0022; // pull toward the centre of each set the box belongs to
+const SET_PULL = 0.00242; // pull toward the centre of each set the box belongs to
 const KIND_PULL = 0.00088; // weaker pull toward the centre of the box's kind
+const INTERSET_REPULSION = 0.95; // slightly less push between boxes in different sets
 const ALPHA_DECAY = 0.985; // "temperature" cools every frame so the graph always settles
 const ALPHA_MIN = 0.004;
 
@@ -700,6 +701,10 @@ function forceStep(
       const dist = Math.max(raw, 60); // clamp: avoids huge forces at tiny distances
       const fade = 1 - raw / REPULSE_RANGE; // smooth falloff, no jump at the range edge
       let f = (REPULSION / (dist * dist)) * fade * fade;
+      const setsA = groups.get(a.id)?.sets ?? [];
+      const setsB = groups.get(b.id)?.sets ?? [];
+      if (setsA.length && setsB.length && !setsA.some((set) => setsB.includes(set)))
+        f *= INTERSET_REPULSION;
       const overlapX = (width(a) + width(b)) / 2 + 60 - Math.abs(dx);
       const overlapY = (height(a) + height(b)) / 2 + 60 - Math.abs(dy);
       if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.4;
