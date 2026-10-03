@@ -18,6 +18,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
 import { renderLatex } from "@/lib/latex.functions";
+import { Pin } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -52,10 +53,11 @@ type Row = {
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
+type RelationGroup = { label: string; items: string[] };
 type CardData = {
   item: Item;
   expanded?: boolean;
-  relations?: string[] | undefined;
+  relations?: RelationGroup[] | undefined;
   pinned?: boolean;
   onTogglePin?: (id: string) => void;
 };
