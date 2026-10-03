@@ -292,7 +292,7 @@ function Index() {
   }, [query, data]);
 
   const goTo = (item: Item) => {
-    const node = graph?.nodes.find((n) => n.id === item.id);
+    const node = nodes.find((n) => n.id === item.id);
     if (!node || !flow) return;
     flow.setCenter(node.position.x + NODE_W / 2, node.position.y + NODE_H / 2, {
       zoom: 1.1,
