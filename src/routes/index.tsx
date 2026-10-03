@@ -297,6 +297,7 @@ function Index() {
           nodes={graph.nodes}
           edges={graph.edges}
           nodeTypes={nodeTypes}
+          onInit={setFlow}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           minZoom={0.2}
