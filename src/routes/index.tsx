@@ -352,16 +352,18 @@ function clearEdgeCorridors(nodes: Node<CardData>[], edges: SimEdge[], pinned: S
         const movable = !node.dragging && !pinned.has(node.id);
         if (movable) {
           next[i] = { ...node, position: { x: node.position.x + best.x * push, y: node.position.y + best.y * push } };
+          changed = true;
+          moved = true;
         } else {
           // A pinned or dragged obstruction stays put; move the line's endpoints instead.
           for (const endpoint of [si, ti]) {
             const other = next[endpoint]!;
             if (other.dragging || pinned.has(other.id)) continue;
             next[endpoint] = { ...other, position: { x: other.position.x - best.x * push, y: other.position.y - best.y * push } };
+            changed = true;
+            moved = true;
           }
         }
-        changed = true;
-        moved = true;
       }
     }
     if (!changed) break;
@@ -930,7 +932,7 @@ function forceStep(
   const anyDrag = nodes.some((n) => n.dragging);
   if (alpha < ALPHA_MIN && !anyDrag) {
     vels.clear();
-    return nodes;
+    return clearEdgeCorridors(nodes, edges, pinned);
   }
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
@@ -1122,46 +1124,9 @@ function forceStep(
     }
   };
   separateBoxes(2);
-  // Edge clearance: a box may not sit on a line it isn't part of. Push the box
-  // off the line (and the line's ends slightly the other way), position-based.
-  const pos = new Map(next.map((n, i) => [n.id, i]));
-  const free = (n: Node<CardData>) => !n.dragging && !pinned.has(n.id);
-  for (const e of edges) {
-    const si = pos.get(e.source);
-    const ti = pos.get(e.target);
-    if (si === undefined || ti === undefined) continue;
-    for (let k = 0; k < next.length; k++) {
-      if (k === si || k === ti) continue;
-      const s = next[si]!, t = next[ti]!, n = next[k]!;
-      const ax = cx(s), ay = cy(s), bx = cx(t), by = cy(t);
-      const vx = bx - ax, vy = by - ay;
-      const len2 = vx * vx + vy * vy;
-      if (len2 < 1) continue;
-      const u = ((cx(n) - ax) * vx + (cy(n) - ay) * vy) / len2;
-      if (u <= 0.02 || u >= 0.98) continue;
-      const px = ax + u * vx, py = ay + u * vy;
-      let nx = cx(n) - px, ny = cy(n) - py;
-      let d = Math.hypot(nx, ny);
-      if (d < 0.01) { nx = -vy; ny = vx; d = Math.hypot(nx, ny); }
-      nx /= d; ny /= d;
-      // EDGE_BUFFER: a no-go corridor on each side of every line.
-       const need = Math.abs(nx) * nodeWidth(n) / 2 + Math.abs(ny) * nodeHeight(n) / 2 + EDGE_BUFFER;
-      const dd = Math.hypot(cx(n) - px, cy(n) - py);
-      if (dd >= need - 0.5) continue;
-      const push = (need - dd) * 0.525;
-      const mv = (i: number, f: number) => {
-        const m = next[i]!;
-        if (!free(m)) return;
-        next[i] = { ...m, position: { x: m.position.x + nx * push * f, y: m.position.y + ny * push * f } };
-        moving = true;
-      };
-      mv(k, 1);
-      mv(si, -0.3);
-      mv(ti, -0.3);
-    }
-  }
   separateBoxes(8);
-  return moving ? next : nodes; // same array => no re-render once settled
+  const clear = clearEdgeCorridors(next, edges, pinned);
+  return moving || clear !== next ? clear : nodes; // same array => no re-render once settled
 }
 
 const EDGE_BUFFER = 60;
@@ -1475,7 +1440,7 @@ function Index() {
       // A fresh visitor starts from the already-settled shared arrangement.
       // Personal positions always win, including when only some nodes are saved.
       initialLayoutRef.current = Object.keys(saved).length === 0 && graph.nodes.every((n) => defaultPositions[n.id]);
-       setNodes(separateSetOutlines(
+       setNodes(clearEdgeCorridors(separateSetOutlines(
          graph.nodes.map((n) => {
           const s = saved[n.id];
           const shared = defaultPositions[n.id];
@@ -1484,7 +1449,7 @@ function Index() {
             position: s ? { x: s.x, y: s.y } : shared ?? n.position,
             data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
           };
-         }), data?.setElements ?? [], pinnedRef.current));
+          }), data?.setElements ?? [], pinnedRef.current), graph.edges, pinnedRef.current));
       vels.current.clear();
       setLayoutVersion((v) => v + 1);
     })();
