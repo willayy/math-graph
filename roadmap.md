@@ -18,3 +18,4 @@
 - [x] Auto-save settled layout so refresh doesn't re-settle
 - [x] Clustering forces: same-set boxes pull together, same-kind weaker pull
 - [x] Stronger repulsion so nodes stop looking glued together
+- [ ] Dynamic edge anchors: edges attach on the facing side instead of a fixed handle
