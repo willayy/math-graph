@@ -786,6 +786,14 @@ function Index() {
     () => (graph ? graph.edges.map((e) => ({ source: e.source, target: e.target })) : []),
     [graph],
   );
+  // Group membership for the clustering forces: kind + sets per node
+  const simGroups = useMemo(() => {
+    const m = new Map<string, { kind: string; sets: string[] }>();
+    if (!data) return m;
+    for (const it of data.items) m.set(it.id, { kind: it.kind, sets: [] });
+    for (const se of data.setElements) m.get(se.element_id)?.sets.push(se.set_id);
+    return m;
+  }, [data]);
   useEffect(() => {
     let raf = 0;
     let wasMoving = false;
