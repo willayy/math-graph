@@ -198,12 +198,42 @@ function Card({ data }: NodeProps<Node<CardData>>) {
 
 const nodeTypes = { card: Card };
 
-function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }[]) {
+function buildGraph(
+  items: Item[],
+  uses: { theorem_id: string; used_id: string }[],
+  sets: { id: string; name: string }[],
+  setElements: { set_id: string; element_id: string }[],
+) {
   const byId = new Map(items.map((i) => [i.id, i]));
+  const setById = new Map(sets.map((s) => [s.id, s]));
   const deps = new Map<string, string[]>();
   for (const u of uses) {
     if (!byId.has(u.used_id) || !byId.has(u.theorem_id)) continue;
     deps.set(u.theorem_id, [...(deps.get(u.theorem_id) ?? []), u.used_id]);
+  }
+
+  // Human-readable relations for the expanded card
+  const relations = new Map<string, string[]>();
+  const relate = (id: string, text: string) =>
+    relations.set(id, [...(relations.get(id) ?? []), text]);
+  for (const [t, ds] of deps) {
+    const theorem = byId.get(t)!;
+    for (const d of ds) {
+      const used = byId.get(d)!;
+      relate(t, `uses ${used.name} (${used.kind})`);
+      relate(d, `used by ${theorem.name} (${theorem.kind})`);
+    }
+  }
+  for (const i of items) {
+    if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id)) {
+      const theorem = byId.get(i.theorem_id)!;
+      relate(i.id, `${i.kind} of ${theorem.name}`);
+      relate(theorem.id, `has ${i.kind}: ${i.name}`);
+    }
+  }
+  for (const se of setElements) {
+    const set = setById.get(se.set_id);
+    if (set && byId.has(se.element_id)) relate(se.element_id, `in set: ${set.name}`);
   }
   // Depth = longest chain back to foundations
   const depth = new Map<string, number>();
@@ -273,24 +303,25 @@ function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }
         id: item.id,
         type: "card",
         position: { x: d * (NODE_W + COL_GAP), y: idx * (NODE_H + ROW_GAP) - total / 2 },
-        data: { item },
+        data: { item, relations: relations.get(item.id) },
       });
     });
   }
 
-  const edge = (source: string, target: string, dashed = false): Edge => ({
+  const edge = (source: string, target: string, label: string, dashed = false): Edge => ({
     id: `${source}-${target}`,
     source,
     target,
     type: "default", // bezier curve — bends around boxes instead of cutting through
+    label,
     markerEnd: { type: MarkerType.ArrowClosed, color: "currentColor" },
     style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: dashed ? "4 4" : undefined },
   });
   const edges: Edge[] = [];
-  for (const [t, ds] of deps) for (const d of ds) edges.push(edge(d, t));
+  for (const [t, ds] of deps) for (const d of ds) edges.push(edge(d, t, "is used by"));
   for (const i of items)
     if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id))
-      edges.push(edge(i.theorem_id, i.id, true));
+      edges.push(edge(i.theorem_id, i.id, i.kind === "proof" ? "has proof" : "has lemma", true));
   return { nodes, edges };
 }
 
@@ -397,7 +428,10 @@ function Index() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
-  const graph = useMemo(() => (data ? buildGraph(data.items, data.uses) : null), [data]);
+  const graph = useMemo(
+    () => (data ? buildGraph(data.items, data.uses, data.sets, data.setElements) : null),
+    [data],
+  );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
   const vels = useRef(new Map<string, Vel>());
   useEffect(() => {
