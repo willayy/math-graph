@@ -614,14 +614,13 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-// View dropdown: layout saving, floating toggle, canonical filter, trace clear.
+// View dropdown: layout saving, position reset, canonical filter, trace clear.
 function ViewMenu(props: {
   open: boolean;
   setOpen: (v: boolean) => void;
   savedFlash: boolean;
   onSave: () => void;
-  floating: boolean;
-  onToggleFloating: () => void;
+  onReset: () => void;
   canonicalOnly: boolean;
   onToggleCanonical: (v: boolean) => void;
   traceActive: boolean;
@@ -651,8 +650,8 @@ function ViewMenu(props: {
               >
                 {props.savedFlash ? "Layout saved ✓" : "Save layout"}
               </button>
-              <button onClick={props.onToggleFloating} className={item}>
-                {props.floating ? "Disable floating" : "Enable floating"}
+              <button onClick={props.onReset} className={item}>
+                Reset positions
               </button>
               <label className={`${item} cursor-pointer`}>
                 Canonical relations only
@@ -1715,42 +1714,6 @@ function Index() {
           )}
         </div>
       </header>
-<<<<<<< src/routes/index.tsx
-      <div className="absolute right-0 top-0 z-10 w-60 p-6">
-        <div className="pointer-events-auto flex flex-col gap-2 text-xs">
-          <button
-            onClick={() => {
-              saveLayout(nodes);
-              setSavedFlash(true);
-              setTimeout(() => setSavedFlash(false), 1500);
-            }}
-            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-          >
-            {savedFlash ? "Layout saved ✓" : "Save layout"}
-          </button>
-          <button
-            onClick={() => {
-              if (!graph) return;
-              pinnedRef.current.clear();
-              vels.current.clear();
-              initialLayoutRef.current = true;
-              setNodes(graph.nodes.map((n) => ({
-                ...n,
-                position: defaultPositions[n.id] ?? n.position,
-                data: { ...n.data, pinned: false, onTogglePin: togglePin },
-              })));
-              setLayoutVersion((v) => v + 1);
-            }}
-            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-          >
-            Reset positions
-          </button>
-          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm hover:bg-muted">
-            <input type="checkbox" checked={canonicalOnly} onChange={(e) => setCanonicalOnly(e.target.checked)} className="accent-foreground" />
-            Canonical relations only
-          </label>
-          <div className="flex flex-col gap-1 rounded-md border border-border bg-background p-2 shadow-sm">
-=======
       <div className="absolute left-0 right-0 top-0 z-20 p-3 sm:p-6 md:left-auto">
         <div className="pointer-events-auto flex flex-col items-end gap-2">
           <div className="flex w-full items-stretch divide-x divide-border rounded-xl md:w-auto md:min-w-[26rem] lg:min-w-[32rem] border border-border bg-background shadow-sm">
@@ -1766,8 +1729,18 @@ function Index() {
                 setSavedFlash(true);
                 setTimeout(() => setSavedFlash(false), 1500);
               }}
-              floating={floating}
-              onToggleFloating={toggleFloating}
+              onReset={() => {
+              if (!graph) return;
+              pinnedRef.current.clear();
+              vels.current.clear();
+              initialLayoutRef.current = true;
+              setNodes(graph.nodes.map((n) => ({
+                ...n,
+                position: defaultPositions[n.id] ?? n.position,
+                data: { ...n.data, pinned: false, onTogglePin: togglePin },
+              })));
+              setLayoutVersion((v) => v + 1);
+            }}
               canonicalOnly={canonicalOnly}
               onToggleCanonical={setCanonicalOnly}
               traceActive={!!traceId}
@@ -1816,7 +1789,6 @@ function Index() {
             />
           </div>
           <div className="flex w-full flex-col gap-1 rounded-xl text-xs md:w-60 border border-border bg-background p-2 shadow-sm">
->>>>>>> /tmp/d
             <label htmlFor="set-filter" className="text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
             <select id="set-filter" value={filterSet} onChange={(e) => setFilterSet(e.target.value)} className="w-full bg-background text-foreground outline-none">
               <option value="">All sets</option>
