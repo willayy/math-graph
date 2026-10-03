@@ -11,6 +11,7 @@ import {
   type Node,
   type Edge,
   type NodeProps,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
@@ -212,6 +213,33 @@ function Index() {
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
   const graph = useMemo(() => (data ? buildGraph(data.items, data.uses) : null), [data]);
+  const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || !data) return [];
+    return data.items
+      .filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          i.statement.toLowerCase().includes(q) ||
+          (i.creator ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  }, [query, data]);
+
+  const goTo = (item: Item) => {
+    const node = graph?.nodes.find((n) => n.id === item.id);
+    if (!node || !flow) return;
+    flow.setCenter(node.position.x + NODE_W / 2, node.position.y + NODE_H / 2, {
+      zoom: 1.1,
+      duration: 600,
+    });
+    setQuery(item.name);
+    setOpen(false);
+  };
 
   return (
     <div className="relative h-screen w-screen bg-background">
@@ -220,6 +248,41 @@ function Index() {
         <p className="mt-1 max-w-sm text-xs text-muted-foreground">
           Arrows point from what is used to what it leads to. Drag to pan, scroll to zoom.
         </p>
+        <div className="pointer-events-auto relative mt-3 w-72">
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && matches[0]) goTo(matches[0]);
+              if (e.key === "Escape") setOpen(false);
+            }}
+            placeholder="Search theorems, axioms, proofs…"
+            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-foreground/60"
+          />
+          {open && matches.length > 0 && (
+            <ul className="absolute mt-1 w-full overflow-hidden rounded-md border border-border bg-background shadow-md">
+              {matches.map((m) => (
+                <li key={m.id}>
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => goTo(m)}
+                    className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
+                  >
+                    <span className="shrink-0 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      {m.kind}
+                    </span>
+                    <span className="truncate">{m.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </header>
       {(isLoading || !mounted) && (
         <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
@@ -234,6 +297,7 @@ function Index() {
           nodes={graph.nodes}
           edges={graph.edges}
           nodeTypes={nodeTypes}
+          onInit={setFlow}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           minZoom={0.2}
