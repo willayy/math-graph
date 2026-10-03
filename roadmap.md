@@ -35,3 +35,4 @@
 - [ ] Global change history tab
 - [ ] Real names visible on every account/action
 - [ ] About page: what MathGraph is, how to contribute
+- [ ] Canonical-only toggle + 'show canonical trace' button in expanded box
