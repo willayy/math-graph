@@ -10,3 +10,4 @@
 - [ ] Color-code nodes by kind
 - [ ] Pin nodes + persist saved graph layout across visits
 - [ ] Group relations by type in expanded card; capitalize Type field
+- [ ] Toggle to disable the floating physics
