@@ -30,3 +30,7 @@
 - [x] Distinct arrowheads per relation + legend; canonical = one proof per theorem, no definitions/lemmas
 - [x] Collections dropdown menu with container (lists collections, new/show-only/delete)
 - [x] Line styles added to the bottom legend
+- [ ] Submissions menu: submit node + links for peer review, track own/pending, vote/comment/suggest edits; 3 approvals publishes
+- [ ] Only verified university emails can submit/vote
+- [ ] Global change history tab
+- [ ] Real names visible on every account/action
