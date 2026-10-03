@@ -14,3 +14,5 @@
 - [x] Prevent edge crossings (untangle force in sim)
 - [x] Remove Goldbach Conjecture
 - [x] Add all Euclid postulates + common notions as axioms
+- [ ] Collections of nodes + show only a collection
+- [ ] Auto-save settled layout so refresh doesn't re-settle
