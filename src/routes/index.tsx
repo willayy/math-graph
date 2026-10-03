@@ -124,17 +124,28 @@ function RichText({ text }: { text: string }) {
   );
 }
 
+const KIND_STYLES: Record<Kind, { border: string; label: string; chip: string }> = {
+  axiom: { border: "border-l-amber-500", label: "text-amber-600", chip: "bg-amber-500" },
+  definition: { border: "border-l-sky-500", label: "text-sky-600", chip: "bg-sky-500" },
+  conjecture: { border: "border-l-rose-500", label: "text-rose-600", chip: "bg-rose-500" },
+  theorem: { border: "border-l-emerald-500", label: "text-emerald-600", chip: "bg-emerald-500" },
+  lemma: { border: "border-l-violet-500", label: "text-violet-600", chip: "bg-violet-500" },
+  proof: { border: "border-l-slate-500", label: "text-slate-600", chip: "bg-slate-500" },
+};
+
 function Card({ data }: NodeProps<Node<CardData>>) {
   const { item, expanded, relations } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
+  const style = KIND_STYLES[item.kind];
   return (
     <div
-      className="cursor-pointer rounded-md border border-foreground/80 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md"
+      className={`cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
       style={{ width: expanded ? 340 : NODE_W }}
     >
       <Handle type="target" position={Position.Left} className="!bg-foreground" />
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest ${style.label}`}>
+          <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
           {item.kind}
         </span>
         <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
