@@ -50,3 +50,4 @@
 - [ ] Add set and node-type filters to isolate graph groups without changing saved positions
 - [ ] Separate overlapping set outlines without moving saved personal layouts unexpectedly
 - [ ] Give each set its own center of gravity to hold its nodes together
+- [ ] Bring the sets closer again without overlapping their dashed outlines or distant-zoom names
