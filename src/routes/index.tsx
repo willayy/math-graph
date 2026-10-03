@@ -841,6 +841,8 @@ function Index() {
   // Strong edges: canonical connections. Each node touches at most one.
   const [strongEdges, setStrongEdges] = useState<string[]>([]);
   const toggleStrong = (e: Edge) => {
+    // Definition edges are always dotted and can never be canonical.
+    if (graph?.nodes.find((n) => n.id === e.source)?.data.item.kind === "definition") return;
     const isStrong = strongEdges.includes(e.id);
     const ends = (id: string) => graph?.edges.find((x) => x.id === id);
     const next = isStrong
@@ -860,7 +862,16 @@ function Index() {
     const list = visible
       ? graph.edges.filter((e) => visible.has(e.source) && visible.has(e.target))
       : graph.edges;
+    const kindOf = (id: string) => graph.nodes.find((n) => n.id === id)?.data.item.kind;
     return list.map((e) => {
+      // Definitions get their own dotted line: theorems lean on many of them,
+      // so they never compete for the single canonical slot.
+      if (kindOf(e.source) === "definition") {
+        return {
+          ...e,
+          style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: "2 4" },
+        };
+      }
       const strong = strongEdges.includes(e.id);
       return {
         ...e,
