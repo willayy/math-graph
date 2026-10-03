@@ -1279,10 +1279,21 @@ function Index() {
     clickedNodeRef.current = true;
     toggleExpand(id);
     clearTimeout(focusTimerRef.current);
-    // Let the expanded box be measured before framing it, including on small screens.
+    // Wait for the expanded box to be measured and its neighbors to move away.
     focusTimerRef.current = setTimeout(() => {
-      void flow?.fitView({ nodes: [{ id }], padding: 0.18, minZoom: 0.75, maxZoom: 1.35, duration: 650 });
-    }, 120);
+      const node = flow?.getNode(id);
+      if (!node || !flow) return;
+      const compact = window.innerWidth < 768;
+      const height = node.measured?.height ?? NODE_H;
+      const width = node.measured?.width ?? (node.data.expanded ? 340 : NODE_W);
+      const availableHeight = window.innerHeight - (compact ? 280 : 100);
+      const zoom = Math.max(0.65, Math.min(compact ? 1 : 1.15, availableHeight / height, (window.innerWidth - 48) / width));
+      // On small screens the controls occupy the top, so frame the card below them.
+      void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2 - (compact ? 115 / zoom : 0), {
+        zoom,
+        duration: 650,
+      });
+    }, 350);
   };
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
