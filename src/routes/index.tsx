@@ -191,7 +191,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
         <dl className="mt-2 space-y-1 border-t border-border pt-2 text-[10px]">
           <div className="flex gap-2">
             <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Type</dt>
-            <dd className="text-foreground/80">{item.kind}</dd>
+            <dd className="capitalize text-foreground/80">{item.kind}</dd>
           </div>
           <div className="flex gap-2">
             <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Date</dt>
@@ -210,15 +210,19 @@ function Card({ data }: NodeProps<Node<CardData>>) {
         </dl>
       )}
       {expanded && relations && relations.length > 0 && (
-        <div className="mt-2 border-t border-border pt-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Relations
-          </p>
-          <ul className="mt-1 space-y-0.5 text-[11px] leading-snug text-foreground/80">
-            {relations.map((r, i) => (
-              <li key={i}>• {r}</li>
-            ))}
-          </ul>
+        <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+          {relations.map((g) => (
+            <div key={g.label}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {g.label}
+              </p>
+              <ul className="mt-0.5 space-y-0.5 text-[11px] leading-snug text-foreground/80">
+                {g.items.map((r, i) => (
+                  <li key={i}>• {r}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       )}
       {expanded && (
@@ -245,29 +249,34 @@ function buildGraph(
     deps.set(u.theorem_id, [...(deps.get(u.theorem_id) ?? []), u.used_id]);
   }
 
-  // Human-readable relations for the expanded card
-  const relations = new Map<string, string[]>();
-  const relate = (id: string, text: string) =>
-    relations.set(id, [...(relations.get(id) ?? []), text]);
+  // Human-readable relations for the expanded card, grouped by relation type
+  const relMap = new Map<string, Map<string, string[]>>();
+  const relate = (id: string, label: string, text: string) => {
+    let g = relMap.get(id);
+    if (!g) relMap.set(id, (g = new Map()));
+    g.set(label, [...(g.get(label) ?? []), text]);
+  };
   for (const [t, ds] of deps) {
     const theorem = byId.get(t)!;
     for (const d of ds) {
       const used = byId.get(d)!;
-      relate(t, `uses ${used.name} (${used.kind})`);
-      relate(d, `used by ${theorem.name} (${theorem.kind})`);
+      relate(t, "Uses", `${used.name} (${used.kind})`);
+      relate(d, "Used by", `${theorem.name} (${theorem.kind})`);
     }
   }
   for (const i of items) {
     if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id)) {
       const theorem = byId.get(i.theorem_id)!;
-      relate(i.id, `${i.kind} of ${theorem.name}`);
-      relate(theorem.id, `has ${i.kind}: ${i.name}`);
+      relate(i.id, i.kind === "lemma" ? "Lemma of" : "Proof of", theorem.name);
+      relate(theorem.id, i.kind === "lemma" ? "Lemmas" : "Proofs", i.name);
     }
   }
   for (const se of setElements) {
     const set = setById.get(se.set_id);
-    if (set && byId.has(se.element_id)) relate(se.element_id, `in set: ${set.name}`);
+    if (set && byId.has(se.element_id)) relate(se.element_id, "In sets", set.name);
   }
+  const toGroups = (g?: Map<string, string[]>): RelationGroup[] | undefined =>
+    g ? [...g.entries()].map(([label, items]) => ({ label, items })) : undefined;
   // Depth = longest chain back to foundations
   const depth = new Map<string, number>();
   const visit = (id: string, stack = new Set<string>()): number => {
@@ -336,7 +345,7 @@ function buildGraph(
         id: item.id,
         type: "card",
         position: { x: d * (NODE_W + COL_GAP), y: idx * (NODE_H + ROW_GAP) - total / 2 },
-        data: { item, relations: relations.get(item.id) },
+        data: { item, relations: toGroups(relMap.get(item.id)) },
       });
     });
   }
