@@ -306,18 +306,21 @@ export type Database = {
       }
       user_preferences: {
         Row: {
+          collections: Json
           floating: boolean
           layout: Json
           updated_at: string
           user_id: string
         }
         Insert: {
+          collections?: Json
           floating?: boolean
           layout?: Json
           updated_at?: string
           user_id: string
         }
         Update: {
+          collections?: Json
           floating?: boolean
           layout?: Json
           updated_at?: string
