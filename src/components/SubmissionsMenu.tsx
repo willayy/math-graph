@@ -32,9 +32,8 @@ async function fetchReview() {
 type Review = Awaited<ReturnType<typeof fetchReview>>;
 type Sub = Review["subs"][number];
 
-export function SubmissionsMenu({ userId, items }: { userId: string | null; items: GraphItem[] }) {
+export function SubmissionsMenu({ userId, items, open, setOpen }: { userId: string | null; items: GraphItem[]; open: boolean; setOpen: (v: boolean) => void }) {
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<null | { mode: "new" } | { mode: "view"; id: string }>(null);
   const { data } = useQuery({ queryKey: ["review"], queryFn: fetchReview });
   const { data: academic } = useQuery({
@@ -70,13 +69,13 @@ export function SubmissionsMenu({ userId, items }: { userId: string | null; item
   );
 
   return (
-    <div className="relative">
+    <div className="relative flex flex-1">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+        className="relative z-30 flex flex-1 items-center justify-center gap-1 whitespace-nowrap px-3 py-2 text-center text-xs font-medium text-foreground transition-colors hover:bg-muted"
       >
         <span>Submissions{others.length ? ` (${others.length})` : ""}</span>
-        <svg className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
+        <svg className={`h-3 w-3 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && (
         <div className="absolute right-0 top-full z-20 mt-1 w-full min-w-56 overflow-hidden rounded-md border border-border bg-background shadow-md">

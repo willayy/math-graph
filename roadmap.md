@@ -55,3 +55,5 @@
 - [x] Prevent graph nodes from overlapping lines
 - [x] Settle initial positions using the simulation, then freeze them and remove the floating toggle
 - [x] Add a reset positions button
+- [x] Grouped menu bar top-right: View / Submissions / Pages (Change history, About) / Collections, one panel open at a time
+- [x] Menu bar scales with window size
