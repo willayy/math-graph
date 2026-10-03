@@ -382,6 +382,21 @@ const GRAVITY = 0.003;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
+const UNTANGLE = 80; // force pushing crossing edges apart
+
+// Segment intersection test (proper crossings only; shared endpoints excluded by caller)
+function segmentsCross(
+  ax: number, ay: number, bx: number, by: number,
+  cx2: number, cy2: number, dx: number, dy: number,
+): boolean {
+  const orient = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) =>
+    (qy - py) * (rx - qx) - (qx - px) * (ry - qy);
+  const o1 = orient(ax, ay, bx, by, cx2, cy2);
+  const o2 = orient(ax, ay, bx, by, dx, dy);
+  const o3 = orient(cx2, cy2, dx, dy, ax, ay);
+  const o4 = orient(cx2, cy2, dx, dy, bx, by);
+  return o1 * o2 < 0 && o3 * o4 < 0;
+}
 
 function forceStep(
   nodes: Node<CardData>[],
@@ -433,6 +448,44 @@ function forceStep(
     fy[i]! += ey * SPRING_K;
     fx[j]! -= ex * SPRING_K;
     fy[j]! -= ey * SPRING_K;
+  }
+
+  // Untangle: any two crossing edges push their endpoints apart along the
+  // line between their midpoints, so the layout works toward planarity.
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const e1 = edges[i]!;
+      const e2 = edges[j]!;
+      if (
+        e1.source === e2.source || e1.source === e2.target ||
+        e1.target === e2.source || e1.target === e2.target
+      )
+        continue;
+      const a = idx.get(e1.source);
+      const b = idx.get(e1.target);
+      const c = idx.get(e2.source);
+      const d = idx.get(e2.target);
+      if (a === undefined || b === undefined || c === undefined || d === undefined) continue;
+      const na = nodes[a]!;
+      const nb = nodes[b]!;
+      const nc = nodes[c]!;
+      const nd = nodes[d]!;
+      if (!segmentsCross(cx(na), cy(na), cx(nb), cy(nb), cx(nc), cy(nc), cx(nd), cy(nd)))
+        continue;
+      let ux = (cx(na) + cx(nb)) / 2 - (cx(nc) + cx(nd)) / 2;
+      let uy = (cy(na) + cy(nb)) / 2 - (cy(nc) + cy(nd)) / 2;
+      const len = Math.hypot(ux, uy) || 1;
+      ux /= len;
+      uy /= len;
+      fx[a]! += ux * UNTANGLE;
+      fy[a]! += uy * UNTANGLE;
+      fx[b]! += ux * UNTANGLE;
+      fy[b]! += uy * UNTANGLE;
+      fx[c]! -= ux * UNTANGLE;
+      fy[c]! -= uy * UNTANGLE;
+      fx[d]! -= ux * UNTANGLE;
+      fy[d]! -= uy * UNTANGLE;
+    }
   }
 
   let mx = 0;
