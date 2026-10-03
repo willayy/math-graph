@@ -40,3 +40,4 @@
 - [x] Stabilize settling on the published graph without overwriting saved layouts
 - [x] Smooth the name-only to full-content transition and begin it further out
 - [x] Keep expanded boxes from overlapping neighboring boxes
+- [ ] Start new visitors on the current settled graph layout without disturbing saved personal layouts
