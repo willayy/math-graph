@@ -156,25 +156,24 @@ function Card({ data }: NodeProps<Node<CardData>>) {
   const { item, expanded, relations, pinned, onTogglePin, inCollection, onToggleCollection, tracing, onTrace } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   const style = KIND_STYLES[item.kind];
-  const zoomedOut = useStore((st) => st.transform[2] < 0.45);
-  if (zoomedOut) {
-    return (
-      <div
-        className={`flex items-center justify-center rounded-md border border-foreground/80 border-l-8 bg-background p-4 text-center ${style.border}`}
-        style={{ width: NODE_W, height: NODE_H }}
-      >
-        <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none" isConnectable={false} />
-        <span className="line-clamp-3 text-3xl font-semibold leading-tight">{item.name}</span>
-        <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none" isConnectable={false} />
-      </div>
-    );
-  }
+  const zoom = useStore((st) => st.transform[2]);
+  // Begin revealing detail while still zoomed out; keep the same box and
+  // handles mounted throughout so changing modes never jolts the layout.
+  const detailOpacity = Math.max(0, Math.min(1, (zoom - 0.32) / 0.2));
   return (
     <div
-      className={`cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
-      style={{ width: expanded ? 340 : NODE_W }}
+      className={`relative cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
+      style={{ width: expanded ? 340 : NODE_W, minHeight: NODE_H }}
     >
       <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+      <div
+        className="pointer-events-none absolute inset-3 flex items-center justify-center text-center transition-opacity duration-200"
+        style={{ opacity: 1 - detailOpacity }}
+        aria-hidden={detailOpacity === 1}
+      >
+        <span className="line-clamp-3 text-3xl font-semibold leading-tight text-foreground">{item.name}</span>
+      </div>
+      <div className="transition-opacity duration-200" style={{ opacity: detailOpacity, pointerEvents: detailOpacity < 0.85 ? "none" : "auto" }}>
       <div className="flex items-baseline justify-between gap-2">
         <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest ${style.label}`}>
           <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
@@ -216,7 +215,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <p
         className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
       >
-        <RichText text={item.statement} />
+        {zoom > 0.32 ? <RichText text={item.statement} /> : item.statement.replace(/\$/g, "")}
       </p>
       {item.citation && (
         <p
@@ -277,6 +276,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       {expanded && (
         <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
       )}
+      </div>
       <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none" isConnectable={false} />
     </div>
   );
@@ -678,13 +678,17 @@ function forceStep(
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
   const anyDrag = nodes.some((n) => n.dragging);
-  if (alpha < ALPHA_MIN && !anyDrag) vels.clear();
-  const cool = alpha < ALPHA_MIN && !anyDrag;
+  if (alpha < ALPHA_MIN && !anyDrag) {
+    vels.clear();
+    return nodes;
+  }
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
   const fy = new Float64Array(nodes.length);
-  const cx = (n: Node) => n.position.x + NODE_W / 2;
-  const cy = (n: Node) => n.position.y + NODE_H / 2;
+  const width = (n: Node<CardData>) => n.measured?.width ?? (n.data.expanded ? 340 : NODE_W);
+  const height = (n: Node<CardData>) => n.measured?.height ?? NODE_H;
+  const cx = (n: Node<CardData>) => n.position.x + width(n) / 2;
+  const cy = (n: Node<CardData>) => n.position.y + height(n) / 2;
 
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
@@ -701,8 +705,8 @@ function forceStep(
       const dist = Math.max(raw, 60); // clamp: avoids huge forces at tiny distances
       const fade = 1 - raw / REPULSE_RANGE; // smooth falloff, no jump at the range edge
       let f = (REPULSION / (dist * dist)) * fade * fade;
-      const overlapX = NODE_W + 60 - Math.abs(dx);
-      const overlapY = NODE_H + 60 - Math.abs(dy);
+      const overlapX = (width(a) + width(b)) / 2 + 60 - Math.abs(dx);
+      const overlapY = (height(a) + height(b)) / 2 + 60 - Math.abs(dy);
       if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.4;
       const ux = dx / dist;
       const uy = dy / dist;
@@ -731,7 +735,7 @@ function forceStep(
   // weakly) of its kind. Pulling toward a group centre keeps the force size
   // independent of group size, so big groups don't collapse.
   const centres = new Map<string, { x: number; y: number; n: number }>();
-  const add = (key: string, n: Node) => {
+  const add = (key: string, n: Node<CardData>) => {
     const c = centres.get(key) ?? { x: 0, y: 0, n: 0 };
     c.x += cx(n); c.y += cy(n); c.n++;
     centres.set(key, c);
@@ -804,7 +808,6 @@ function forceStep(
 
   let moving = false;
   const next = nodes.map((n, i) => {
-    if (cool) return n;
     if (n.dragging || pinned.has(n.id)) {
       vels.set(n.id, { vx: 0, vy: 0 });
       if (n.dragging) moving = true;
@@ -833,35 +836,34 @@ function forceStep(
     moving = true;
     return { ...n, position: { x: n.position.x + vx, y: n.position.y + vy } };
   });
-  // Collision pass: directly separate overlapping boxes (position-based, so it
-  // can't oscillate) and keep a clear gap between neighbours.
+  // Separate actual measured rectangles, including expanded cards. Repeat
+  // after edge clearance too, since moving an edge can crowd a neighbor.
   const GAP = 50;
-  for (let iter = 0; iter < 2; iter++) {
+  const separateBoxes = (iterations: number) => { for (let iter = 0; iter < iterations; iter++) {
     for (let i = 0; i < next.length; i++) {
       for (let j = i + 1; j < next.length; j++) {
         const a = next[i]!;
         const b = next[j]!;
-        const dx = b.position.x - a.position.x;
-        const dy = b.position.y - a.position.y;
-        const ox = NODE_W + GAP - Math.abs(dx);
-        const oy = NODE_H + GAP - Math.abs(dy);
+        const ox = (width(a) + width(b)) / 2 + GAP - Math.abs(cx(b) - cx(a));
+        const oy = (height(a) + height(b)) / 2 + GAP - Math.abs(cy(b) - cy(a));
         if (ox <= 0.5 || oy <= 0.5) continue;
         const fa = a.dragging || pinned.has(a.id) ? 0 : 1;
         const fb = b.dragging || pinned.has(b.id) ? 0 : 1;
         if (fa + fb === 0) continue;
         const push = (ox < oy ? ox : oy) / (fa + fb);
-        const sx = ox < oy ? (dx >= 0 ? 1 : -1) : 0;
-        const sy = ox < oy ? 0 : dy >= 0 ? 1 : -1;
+        const sx = ox < oy ? (cx(b) >= cx(a) ? 1 : -1) : 0;
+        const sy = ox < oy ? 0 : cy(b) >= cy(a) ? 1 : -1;
         if (fa) next[i] = { ...a, position: { x: a.position.x - sx * push * fa, y: a.position.y - sy * push * fa } };
         if (fb) next[j] = { ...b, position: { x: b.position.x + sx * push * fb, y: b.position.y + sy * push * fb } };
         moving = true;
       }
     }
-  }
+  }};
+  separateBoxes(2);
   // Edge clearance: a box may not sit on a line it isn't part of. Push the box
   // off the line (and the line's ends slightly the other way), position-based.
   const pos = new Map(next.map((n, i) => [n.id, i]));
-  const free = (n: Node) => !n.dragging && !pinned.has(n.id);
+  const free = (n: Node<CardData>) => !n.dragging && !pinned.has(n.id);
   for (const e of edges) {
     const si = pos.get(e.source);
     const ti = pos.get(e.target);
@@ -880,7 +882,7 @@ function forceStep(
       let d = Math.hypot(nx, ny);
       if (d < 0.01) { nx = -vy; ny = vx; d = Math.hypot(nx, ny); }
       nx /= d; ny /= d;
-      const need = Math.abs(nx) * NODE_W / 2 + Math.abs(ny) * NODE_H / 2 + 20;
+      const need = Math.abs(nx) * width(n) / 2 + Math.abs(ny) * height(n) / 2 + 20;
       const dd = Math.hypot(cx(n) - px, cy(n) - py);
       if (dd >= need - 0.5) continue;
       const push = (need - dd) * 0.525;
@@ -895,6 +897,7 @@ function forceStep(
       mv(ti, -0.3);
     }
   }
+  separateBoxes(8);
   return moving ? next : nodes; // same array => no re-render once settled
 }
 
@@ -911,6 +914,12 @@ function Index() {
     [data],
   );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
+  const [layoutVersion, setLayoutVersion] = useState(0);
+  const reheatRef = useRef<() => void>(() => {});
+  const handleNodesChange: typeof onNodesChange = (changes) => {
+    if (changes.some((change) => change.type === "dimensions")) reheatRef.current();
+    onNodesChange(changes);
+  };
   const vels = useRef(new Map<string, Vel>());
   const pinnedRef = useRef(new Set<string>());
   const [savedFlash, setSavedFlash] = useState(false);
@@ -1183,6 +1192,8 @@ function Index() {
           };
         }),
       );
+      vels.current.clear();
+      setLayoutVersion((v) => v + 1);
     })();
     return () => {
       cancelled = true;
@@ -1205,13 +1216,16 @@ function Index() {
     return m;
   }, [data]);
   useEffect(() => {
+    if (!layoutVersion) return;
     let raf = 0;
     let wasMoving = false;
     let alpha = 1;
+    reheatRef.current = () => { alpha = Math.max(alpha, 0.6); };
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       if (floatingRef.current)
         setNodes((ns) => {
+          if (!ns.length) return ns;
           if (ns.some((n) => n.dragging)) alpha = Math.max(alpha, 0.5);
           alpha *= ALPHA_DECAY;
           const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
@@ -1231,15 +1245,18 @@ function Index() {
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(saveTimer);
+      reheatRef.current = () => {};
     };
-  }, [setNodes, simEdges]);
+  }, [setNodes, simEdges, simGroups, layoutVersion]);
 
-  const toggleExpand = (id: string) =>
+  const toggleExpand = (id: string) => {
+    reheatRef.current();
     setNodes((ns) =>
       ns.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, expanded: !n.data.expanded } } : n,
       ),
     );
+  };
 
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   // Re-fit the view once, after the initial layout has had time to settle
@@ -1409,7 +1426,7 @@ function Index() {
           onlyRenderVisibleElements
           nodes={viewNodes}
           edges={viewEdges}
-          onNodesChange={onNodesChange as OnNodesChange<Node>}
+          onNodesChange={handleNodesChange as OnNodesChange<Node>}
           onNodeClick={(_, node) => toggleExpand(node.id)}
           onEdgeClick={(_, e) => toggleStrong(e)}
           nodeTypes={nodeTypes}

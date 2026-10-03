@@ -37,3 +37,6 @@
 - [x] About page: what MathGraph is, how to contribute
 - [x] Canonical-only toggle + 'show canonical trace' button in expanded box
 - [x] Rename "weak" lines to "non-canonical"
+- [x] Stabilize settling on the published graph without overwriting saved layouts
+- [x] Smooth the name-only to full-content transition and begin it further out
+- [x] Keep expanded boxes from overlapping neighboring boxes
