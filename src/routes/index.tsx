@@ -217,47 +217,52 @@ function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }
 }
 
 // Gentle physics: nodes repel when their boxes overlap, with damped velocity
-// so they feel slightly inert rather than snapping.
-type SimNode = Node<CardData> & { vx?: number; vy?: number };
+// (kept in a side map) so they feel slightly inert rather than snapping.
+type Vel = { vx: number; vy: number };
 
-function repelStep(nodes: SimNode[]): SimNode[] {
-  const next = nodes.map((n) => ({ ...n, vx: n.vx ?? 0, vy: n.vy ?? 0 }));
+function repelStep(nodes: Node<CardData>[], vels: Map<string, Vel>): Node<CardData>[] {
   let anyOverlap = false;
-  for (let i = 0; i < next.length; i++) {
-    for (let j = i + 1; j < next.length; j++) {
-      const a = next[i]!;
-      const b = next[j]!;
-      const acx = a.position.x + NODE_W / 2;
-      const acy = a.position.y + NODE_H / 2;
-      const bcx = b.position.x + NODE_W / 2;
-      const bcy = b.position.y + NODE_H / 2;
-      const dx = bcx - acx;
-      const dy = bcy - acy;
+  const delta = new Map<string, { x: number; y: number }>();
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i]!;
+      const b = nodes[j]!;
+      const dx = b.position.x - a.position.x;
+      const dy = b.position.y - a.position.y;
       const overlapX = NODE_W + 24 - Math.abs(dx);
       const overlapY = NODE_H + 24 - Math.abs(dy);
       if (overlapX > 0 && overlapY > 0) {
         anyOverlap = true;
-        const push = 0.06;
+        const push = 0.05;
+        const da = delta.get(a.id) ?? { x: 0, y: 0 };
+        const db = delta.get(b.id) ?? { x: 0, y: 0 };
         if (overlapX < overlapY) {
           const f = overlapX * push * (dx >= 0 ? 1 : -1);
-          a.vx -= f;
-          b.vx += f;
+          da.x -= f;
+          db.x += f;
         } else {
           const f = overlapY * push * (dy >= 0 ? 1 : -1);
-          a.vy -= f;
-          b.vy += f;
+          da.y -= f;
+          db.y += f;
         }
+        delta.set(a.id, da);
+        delta.set(b.id, db);
       }
     }
   }
-  if (!anyOverlap) return nodes;
+  if (!anyOverlap) {
+    vels.clear();
+    return nodes;
+  }
   const damping = 0.82;
-  return next.map((n) => ({
-    ...n,
-    vx: n.vx * damping,
-    vy: n.vy * damping,
-    position: { x: n.position.x + n.vx, y: n.position.y + n.vy },
-  }));
+  return nodes.map((n) => {
+    const d = delta.get(n.id);
+    const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
+    if (!d && Math.abs(v.vx) < 0.05 && Math.abs(v.vy) < 0.05) return n;
+    const nv = { vx: (v.vx + (d?.x ?? 0)) * damping, vy: (v.vy + (d?.y ?? 0)) * damping };
+    vels.set(n.id, nv);
+    return { ...n, position: { x: n.position.x + nv.vx, y: n.position.y + nv.vy } };
+  });
 }
 
 function Index() {
@@ -265,21 +270,29 @@ function Index() {
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
   const graph = useMemo(() => (data ? buildGraph(data.items, data.uses) : null), [data]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<SimNode>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([]);
+  const vels = useRef(new Map<string, Vel>());
   useEffect(() => {
-    if (graph) setNodes(graph.nodes as SimNode[]);
+    if (graph) setNodes(graph.nodes);
   }, [graph, setNodes]);
 
   // Animation loop: keep nudging while any boxes overlap
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      setNodes((ns) => repelStep(ns));
+      setNodes((ns) => repelStep(ns, vels.current));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [setNodes]);
+
+  const toggleExpand = (id: string) =>
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, expanded: !n.data.expanded } } : n,
+      ),
+    );
 
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   const [query, setQuery] = useState("");
