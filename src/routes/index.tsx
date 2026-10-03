@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+
+type TableName = keyof Database["public"]["Tables"];
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -33,7 +36,7 @@ type Row = {
   description?: string;
 };
 
-function useTable<T>(table: string) {
+function useTable<T>(table: TableName) {
   return useQuery({
     queryKey: [table],
     queryFn: async () => {
