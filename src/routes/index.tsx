@@ -476,7 +476,7 @@ function buildGraph(
 type Vel = { vx: number; vy: number };
 type SimEdge = { source: string; target: string };
 
-const REPULSION = 220000; // inverse-square strength
+const REPULSION = 340000; // inverse-square strength — dominates all other forces
 const REPULSE_RANGE = 700;
 const SPRING_K = 0.004;
 const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
@@ -1057,6 +1057,7 @@ function Index() {
           onNodesChange={onNodesChange as OnNodesChange<Node>}
           onNodeClick={(_, node) => toggleExpand(node.id)}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onInit={setFlow}
           fitView
           fitViewOptions={{ padding: 0.2 }}
