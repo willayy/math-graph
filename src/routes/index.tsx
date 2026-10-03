@@ -685,8 +685,10 @@ function forceStep(
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
   const fy = new Float64Array(nodes.length);
-  const cx = (n: Node) => n.position.x + NODE_W / 2;
-  const cy = (n: Node) => n.position.y + NODE_H / 2;
+  const width = (n: Node<CardData>) => n.measured?.width ?? (n.data.expanded ? 340 : NODE_W);
+  const height = (n: Node<CardData>) => n.measured?.height ?? NODE_H;
+  const cx = (n: Node<CardData>) => n.position.x + width(n) / 2;
+  const cy = (n: Node<CardData>) => n.position.y + height(n) / 2;
 
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
@@ -703,8 +705,8 @@ function forceStep(
       const dist = Math.max(raw, 60); // clamp: avoids huge forces at tiny distances
       const fade = 1 - raw / REPULSE_RANGE; // smooth falloff, no jump at the range edge
       let f = (REPULSION / (dist * dist)) * fade * fade;
-      const overlapX = NODE_W + 60 - Math.abs(dx);
-      const overlapY = NODE_H + 60 - Math.abs(dy);
+      const overlapX = (width(a) + width(b)) / 2 + 60 - Math.abs(dx);
+      const overlapY = (height(a) + height(b)) / 2 + 60 - Math.abs(dy);
       if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.4;
       const ux = dx / dist;
       const uy = dy / dist;
@@ -733,7 +735,7 @@ function forceStep(
   // weakly) of its kind. Pulling toward a group centre keeps the force size
   // independent of group size, so big groups don't collapse.
   const centres = new Map<string, { x: number; y: number; n: number }>();
-  const add = (key: string, n: Node) => {
+  const add = (key: string, n: Node<CardData>) => {
     const c = centres.get(key) ?? { x: 0, y: 0, n: 0 };
     c.x += cx(n); c.y += cy(n); c.n++;
     centres.set(key, c);
@@ -844,15 +846,15 @@ function forceStep(
         const b = next[j]!;
         const dx = b.position.x - a.position.x;
         const dy = b.position.y - a.position.y;
-        const ox = NODE_W + GAP - Math.abs(dx);
-        const oy = NODE_H + GAP - Math.abs(dy);
+        const ox = (width(a) + width(b)) / 2 + GAP - Math.abs(cx(b) - cx(a));
+        const oy = (height(a) + height(b)) / 2 + GAP - Math.abs(cy(b) - cy(a));
         if (ox <= 0.5 || oy <= 0.5) continue;
         const fa = a.dragging || pinned.has(a.id) ? 0 : 1;
         const fb = b.dragging || pinned.has(b.id) ? 0 : 1;
         if (fa + fb === 0) continue;
         const push = (ox < oy ? ox : oy) / (fa + fb);
-        const sx = ox < oy ? (dx >= 0 ? 1 : -1) : 0;
-        const sy = ox < oy ? 0 : dy >= 0 ? 1 : -1;
+        const sx = ox < oy ? (cx(b) >= cx(a) ? 1 : -1) : 0;
+        const sy = ox < oy ? 0 : cy(b) >= cy(a) ? 1 : -1;
         if (fa) next[i] = { ...a, position: { x: a.position.x - sx * push * fa, y: a.position.y - sy * push * fa } };
         if (fb) next[j] = { ...b, position: { x: b.position.x + sx * push * fb, y: b.position.y + sy * push * fb } };
         moving = true;
@@ -862,7 +864,7 @@ function forceStep(
   // Edge clearance: a box may not sit on a line it isn't part of. Push the box
   // off the line (and the line's ends slightly the other way), position-based.
   const pos = new Map(next.map((n, i) => [n.id, i]));
-  const free = (n: Node) => !n.dragging && !pinned.has(n.id);
+  const free = (n: Node<CardData>) => !n.dragging && !pinned.has(n.id);
   for (const e of edges) {
     const si = pos.get(e.source);
     const ti = pos.get(e.target);
@@ -881,7 +883,7 @@ function forceStep(
       let d = Math.hypot(nx, ny);
       if (d < 0.01) { nx = -vy; ny = vx; d = Math.hypot(nx, ny); }
       nx /= d; ny /= d;
-      const need = Math.abs(nx) * NODE_W / 2 + Math.abs(ny) * NODE_H / 2 + 20;
+      const need = Math.abs(nx) * width(n) / 2 + Math.abs(ny) * height(n) / 2 + 20;
       const dd = Math.hypot(cx(n) - px, cy(n) - py);
       if (dd >= need - 0.5) continue;
       const push = (need - dd) * 0.525;
@@ -913,6 +915,11 @@ function Index() {
   );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  const reheatRef = useRef<() => void>(() => {});
+  const handleNodesChange: typeof onNodesChange = (changes) => {
+    if (changes.some((change) => change.type === "dimensions")) reheatRef.current();
+    onNodesChange(changes);
+  };
   const vels = useRef(new Map<string, Vel>());
   const pinnedRef = useRef(new Set<string>());
   const [savedFlash, setSavedFlash] = useState(false);
@@ -1213,6 +1220,7 @@ function Index() {
     let raf = 0;
     let wasMoving = false;
     let alpha = 1;
+    reheatRef.current = () => { alpha = Math.max(alpha, 0.6); };
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       if (floatingRef.current)
@@ -1237,15 +1245,18 @@ function Index() {
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(saveTimer);
+      reheatRef.current = () => {};
     };
   }, [setNodes, simEdges, simGroups, layoutVersion]);
 
-  const toggleExpand = (id: string) =>
+  const toggleExpand = (id: string) => {
+    reheatRef.current();
     setNodes((ns) =>
       ns.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, expanded: !n.data.expanded } } : n,
       ),
     );
+  };
 
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   // Re-fit the view once, after the initial layout has had time to settle
@@ -1415,7 +1426,7 @@ function Index() {
           onlyRenderVisibleElements
           nodes={viewNodes}
           edges={viewEdges}
-          onNodesChange={onNodesChange as OnNodesChange<Node>}
+          onNodesChange={handleNodesChange as OnNodesChange<Node>}
           onNodeClick={(_, node) => toggleExpand(node.id)}
           onEdgeClick={(_, e) => toggleStrong(e)}
           nodeTypes={nodeTypes}
