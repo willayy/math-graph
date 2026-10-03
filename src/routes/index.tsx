@@ -314,6 +314,35 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
 
 const edgeTypes = { floating: FloatingEdge };
 
+// Arrowheads per relation: open chevron = used by, filled square (QED) = proved
+// by, hollow circle = has lemma. auto-start-reverse lets them serve as start heads.
+function EdgeMarkers() {
+  const common = {
+    markerUnits: "userSpaceOnUse" as const,
+    orient: "auto-start-reverse",
+    markerWidth: 22,
+    markerHeight: 22,
+    viewBox: "-11 -11 22 22",
+    refX: 0,
+    refY: 0,
+  };
+  return (
+    <svg width="0" height="0" className="absolute" style={{ color: "var(--foreground)" }} aria-hidden>
+      <defs>
+        <marker id="mg-uses" {...common} refX={0}>
+          <path d="M -10 -7 L 0 0 L -10 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        </marker>
+        <marker id="mg-proof" {...common} refX={0}>
+          <rect x="-11" y="-5.5" width="11" height="11" fill="currentColor" />
+        </marker>
+        <marker id="mg-lemma" {...common} refX={0}>
+          <circle cx="-6" cy="0" r="5" fill="var(--background)" stroke="currentColor" strokeWidth="1.8" />
+        </marker>
+      </defs>
+    </svg>
+  );
+}
+
 function buildGraph(
   items: Item[],
   uses: { theorem_id: string; used_id: string }[],
@@ -1221,6 +1250,21 @@ function Index() {
           <Controls showInteractive={false} />
         </ReactFlow>
       )}
+      <EdgeMarkers />
+      <div className="pointer-events-none absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-5 rounded-md border bg-background/90 px-4 py-2 text-xs text-muted-foreground">
+        {[
+          ["mg-uses", "used by"],
+          ["mg-proof", "proved by"],
+          ["mg-lemma", "has lemma"],
+        ].map(([m, t]) => (
+          <span key={m} className="flex items-center gap-1.5">
+            <svg width="34" height="14" className="text-foreground">
+              <line x1="2" y1="7" x2="24" y2="7" stroke="currentColor" strokeWidth="1.25" markerEnd={`url(#${m})`} />
+            </svg>
+            {t}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
