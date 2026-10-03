@@ -434,7 +434,7 @@ function buildGraph(
     id: `${source}-${target}`,
     source,
     target,
-    type: "default", // bezier curve — bends around boxes instead of cutting through
+    type: "floating", // anchors recomputed each frame: leaves the box on the facing side
     label,
     markerEnd: arrow,
     ...(twoWay ? { markerStart: arrow } : {}),
