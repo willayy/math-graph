@@ -630,16 +630,15 @@ function buildGraph(
 }
 
 // Force simulation: every pair of boxes repels (stronger when close, hard push
-// when overlapping), connected boxes are pulled by springs toward a resting
-// left-to-right offset, and a weak pull keeps the graph centred. Velocities are
-// damped so the layout settles into equilibrium; dragged boxes stay pinned.
+// when overlapping), and a weak pull keeps the graph centred. Connected boxes
+// are NOT pulled together — edges only draw lines, they exert no force.
+// Velocities are damped so the layout settles into equilibrium; dragged boxes
+// stay pinned.
 type Vel = { vx: number; vy: number };
 type SimEdge = { source: string; target: string };
 
 const REPULSION = 700000; // inverse-square strength — dominates all other forces
 const REPULSE_RANGE = 1200;
-const SPRING_K = 0.004;
-const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
 const GRAVITY = 0.0012;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
@@ -713,19 +712,6 @@ function forceStep(
     }
   }
 
-  for (const e of edges) {
-    const i = idx.get(e.source);
-    const j = idx.get(e.target);
-    if (i === undefined || j === undefined) continue;
-    const a = nodes[i]!;
-    const b = nodes[j]!;
-    const ex = cx(b) - cx(a) - REST_DX;
-    const ey = cy(b) - cy(a);
-    fx[i]! += ex * SPRING_K;
-    fy[i]! += ey * SPRING_K;
-    fx[j]! -= ex * SPRING_K;
-    fy[j]! -= ey * SPRING_K;
-  }
 
   // Clustering: each box is pulled toward the centre of its sets and (more
   // weakly) of its kind. Pulling toward a group centre keeps the force size
