@@ -45,9 +45,9 @@
 - [x] Check set clustering: most boxes share the same Euclid set, so no force change is needed
 - [x] Increase set grouping by 10% and slightly reduce repulsion across different sets
 - [x] Outline each set with its name and replace the graph with centered set names when zoomed far out
-- [ ] Smooth transitions between zoom levels, retain set outlines in overview, and delay name-only overview until farther out
-- [ ] Make node effects and zoom-level code clearer and more concise without changing behavior
-- [ ] Add set and node-type filters to isolate graph groups without changing saved positions
-- [ ] Separate overlapping set outlines without moving saved personal layouts unexpectedly
-- [ ] Give each set its own center of gravity to hold its nodes together
-- [ ] Bring the sets a little closer again without overlapping their dashed outlines or distant-zoom names
+- [x] Smooth transitions between zoom levels, retain set outlines in overview, and delay name-only overview until farther out
+- [x] Make node effects and zoom-level code clearer and more concise without changing behavior
+- [x] Add set and node-type filters to isolate graph groups without changing saved positions
+- [x] Separate overlapping set outlines without moving saved personal layouts unexpectedly
+- [x] Give each set its own center of gravity to hold its nodes together
+- [x] Bring the sets a little closer again without overlapping their dashed outlines or distant-zoom names
