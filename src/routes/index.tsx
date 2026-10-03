@@ -1032,7 +1032,7 @@ function Index() {
     if (trace) base = coll ? new Set([...trace].filter((x) => coll.has(x))) : trace;
     if (canonicalOnly && !trace) {
       const connected = new Set<string>();
-      for (const e of graph.edges) {
+      for (const e of graph?.edges ?? []) {
         if (!strongEdges.includes(e.id)) continue;
         connected.add(e.source);
         connected.add(e.target);
