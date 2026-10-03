@@ -215,7 +215,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <p
         className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
       >
-        {zoom > 0.32 ? <RichText text={item.statement} /> : item.statement.replace(/\$/g, "")}
+        <RichText text={item.statement} />
       </p>
       {item.citation && (
         <p
@@ -836,16 +836,14 @@ function forceStep(
     moving = true;
     return { ...n, position: { x: n.position.x + vx, y: n.position.y + vy } };
   });
-  // Collision pass: directly separate overlapping boxes (position-based, so it
-  // can't oscillate) and keep a clear gap between neighbours.
+  // Separate actual measured rectangles, including expanded cards. Repeat
+  // after edge clearance too, since moving an edge can crowd a neighbor.
   const GAP = 50;
-  for (let iter = 0; iter < 2; iter++) {
+  const separateBoxes = (iterations: number) => { for (let iter = 0; iter < iterations; iter++) {
     for (let i = 0; i < next.length; i++) {
       for (let j = i + 1; j < next.length; j++) {
         const a = next[i]!;
         const b = next[j]!;
-        const dx = b.position.x - a.position.x;
-        const dy = b.position.y - a.position.y;
         const ox = (width(a) + width(b)) / 2 + GAP - Math.abs(cx(b) - cx(a));
         const oy = (height(a) + height(b)) / 2 + GAP - Math.abs(cy(b) - cy(a));
         if (ox <= 0.5 || oy <= 0.5) continue;
@@ -860,7 +858,8 @@ function forceStep(
         moving = true;
       }
     }
-  }
+  }};
+  separateBoxes(2);
   // Edge clearance: a box may not sit on a line it isn't part of. Push the box
   // off the line (and the line's ends slightly the other way), position-based.
   const pos = new Map(next.map((n, i) => [n.id, i]));
@@ -898,6 +897,7 @@ function forceStep(
       mv(ti, -0.3);
     }
   }
+  separateBoxes(8);
   return moving ? next : nodes; // same array => no re-render once settled
 }
 
