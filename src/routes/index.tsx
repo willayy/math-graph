@@ -424,6 +424,8 @@ const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
 const UNTANGLE = 80; // force pushing crossing edges apart
+const SET_K = 0.0009; // pull between boxes sharing a set
+const KIND_K = 0.00035; // weaker pull between boxes of the same kind
 
 // Segment intersection test (proper crossings only; shared endpoints excluded by caller)
 function segmentsCross(
@@ -444,6 +446,7 @@ function forceStep(
   edges: SimEdge[],
   vels: Map<string, Vel>,
   pinned: Set<string>,
+  groups: Map<string, { kind: string; sets: string[] }>,
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
@@ -489,6 +492,30 @@ function forceStep(
     fy[i]! += ey * SPRING_K;
     fx[j]! -= ex * SPRING_K;
     fy[j]! -= ey * SPRING_K;
+  }
+
+  // Clustering: boxes in the same set pull toward each other; boxes of the
+  // same kind pull toward each other with a weaker force. Linear springs with
+  // no rest length, so groups gather into loose clusters.
+  for (let i = 0; i < nodes.length; i++) {
+    const ga = groups.get(nodes[i]!.id);
+    if (!ga) continue;
+    for (let j = i + 1; j < nodes.length; j++) {
+      const gb = groups.get(nodes[j]!.id);
+      if (!gb) continue;
+      let k = 0;
+      if (ga.sets.some((s) => gb.sets.includes(s))) k += SET_K;
+      if (ga.kind === gb.kind) k += KIND_K;
+      if (k === 0) continue;
+      const a = nodes[i]!;
+      const b = nodes[j]!;
+      const dx = cx(b) - cx(a);
+      const dy = cy(b) - cy(a);
+      fx[i]! += dx * k;
+      fy[i]! += dy * k;
+      fx[j]! -= dx * k;
+      fy[j]! -= dy * k;
+    }
   }
 
   // Untangle: any two crossing edges push their endpoints apart along the
