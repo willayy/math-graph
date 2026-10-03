@@ -51,7 +51,7 @@
 - [x] Separate overlapping set outlines without moving saved personal layouts unexpectedly
 - [x] Give each set its own center of gravity to hold its nodes together
 - [x] Bring the sets a little closer again without overlapping their dashed outlines or distant-zoom names
-- [ ] Bring in the menu draft changes
+- [x] Bring in the menu draft changes (acceptance queued)
 - [x] Prevent graph nodes from overlapping lines
 - [x] Settle initial positions using the simulation, then freeze them and remove the floating toggle
 - [x] Add a reset positions button
