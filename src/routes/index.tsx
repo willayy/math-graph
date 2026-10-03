@@ -52,7 +52,7 @@ type Row = {
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
-type CardData = { item: Item; expanded?: boolean };
+type CardData = { item: Item; expanded?: boolean; relations?: string[] };
 
 const NODE_W = 260;
 const COL_GAP = 120;
@@ -79,7 +79,11 @@ async function fetchGraph() {
   });
   const uses = await supabase.from("theorem_uses").select("theorem_id, used_id");
   if (uses.error) throw uses.error;
-  return { items, uses: uses.data ?? [] };
+  const sets = await supabase.from("sets").select("id, name");
+  if (sets.error) throw sets.error;
+  const setElements = await supabase.from("set_elements").select("set_id, element_id");
+  if (setElements.error) throw setElements.error;
+  return { items, uses: uses.data ?? [], sets: sets.data ?? [], setElements: setElements.data ?? [] };
 }
 
 // Splits text into plain and $...$ math segments
