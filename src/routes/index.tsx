@@ -1326,19 +1326,43 @@ function Index() {
         </ReactFlow>
       )}
       <EdgeMarkers />
-      <div className="pointer-events-none absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-5 rounded-md border bg-background/90 px-4 py-2 text-xs text-muted-foreground">
-        {[
-          ["mg-uses", "used by"],
-          ["mg-proof", "proved by"],
-          ["mg-lemma", "has lemma"],
-        ].map(([m, t]) => (
-          <span key={m} className="flex items-center gap-1.5">
-            <svg width="34" height="14" className="text-foreground">
-              <line x1="2" y1="7" x2="24" y2="7" stroke="currentColor" strokeWidth="1.25" markerEnd={`url(#${m})`} />
-            </svg>
-            {t}
-          </span>
-        ))}
+      <div className="pointer-events-none absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 rounded-md border bg-background/90 px-4 py-2 text-xs text-muted-foreground">
+        <div className="flex gap-5">
+          {[
+            ["mg-uses", "used by"],
+            ["mg-proof", "proved by"],
+            ["mg-lemma", "has lemma"],
+          ].map(([m, t]) => (
+            <span key={m} className="flex items-center gap-1.5">
+              <svg width="34" height="14" className="text-foreground">
+                <line x1="2" y1="7" x2="24" y2="7" stroke="currentColor" strokeWidth="1.25" markerEnd={`url(#${m})`} />
+              </svg>
+              {t}
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-5">
+          {[
+            ["", "canonical"],
+            ["5 5", "weak relation"],
+            ["2 4", "definition"],
+          ].map(([dash, t]) => (
+            <span key={t} className="flex items-center gap-1.5">
+              <svg width="34" height="14" className="text-foreground">
+                <line
+                  x1="2"
+                  y1="7"
+                  x2="32"
+                  y2="7"
+                  stroke="currentColor"
+                  strokeWidth={dash === "" ? 3 : 1.25}
+                  strokeDasharray={dash || undefined}
+                />
+              </svg>
+              {t}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
