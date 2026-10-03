@@ -1178,6 +1178,15 @@ function Index() {
         }
       }
       if (cancelled) return;
+      // Drop corrupt saved positions (NaN/Infinity/huge) so one bad entry can't blank the graph.
+      saved = Object.fromEntries(
+        Object.entries(saved ?? {}).filter(
+          ([, v]) =>
+            v && Number.isFinite(v.x) && Number.isFinite(v.y) && Math.abs(v.x) < 1e5 && Math.abs(v.y) < 1e5,
+        ),
+      );
+      if (!Array.isArray(cols)) cols = [];
+      if (!Array.isArray(strong)) strong = [];
       setCollections(cols);
       setStrongEdges(strong);
       setActiveId("");
