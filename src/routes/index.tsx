@@ -979,8 +979,10 @@ function Index() {
   // proof; "used by" and lemma links can be canonical many times over.
   const [strongEdges, setStrongEdges] = useState<string[]>([]);
   const toggleStrong = (e: Edge) => {
-    // Definition edges are always dotted and can never be canonical.
-    if (graph?.nodes.find((n) => n.id === e.source)?.data.item.kind === "definition") return;
+    // Definition edges are always dotted, and lemmas are never canonical
+    // results — only theorems and proofs can carry the canonical mark.
+    const kindOf = (id: string) => graph?.nodes.find((n) => n.id === id)?.data.item.kind;
+    if (kindOf(e.source) === "definition" || kindOf(e.source) === "lemma" || kindOf(e.target) === "lemma") return;
     const isStrong = strongEdges.includes(e.id);
     const ends = (id: string) => graph?.edges.find((x) => x.id === id);
     const isProof = (x?: Edge) => (x?.data as { relation?: string } | undefined)?.relation === "has proof";
