@@ -387,6 +387,7 @@ function forceStep(
   nodes: Node<CardData>[],
   edges: SimEdge[],
   vels: Map<string, Vel>,
+  pinned: Set<string>,
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
@@ -445,9 +446,9 @@ function forceStep(
 
   let moving = false;
   const next = nodes.map((n, i) => {
-    if (n.dragging) {
+    if (n.dragging || pinned.has(n.id)) {
       vels.set(n.id, { vx: 0, vy: 0 });
-      moving = true;
+      if (n.dragging) moving = true;
       return n;
     }
     const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
