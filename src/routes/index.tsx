@@ -158,7 +158,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       className={`cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
       style={{ width: expanded ? 340 : NODE_W }}
     >
-      <Handle type="target" position={Position.Left} className="!bg-foreground" />
+      <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none" isConnectable={false} />
       <div className="flex items-baseline justify-between gap-2">
         <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest ${style.label}`}>
           <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
@@ -250,7 +250,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       {expanded && (
         <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-foreground" />
+      <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none" isConnectable={false} />
     </div>
   );
 }
@@ -692,6 +692,43 @@ function forceStep(
         if (fb) next[j] = { ...b, position: { x: b.position.x + sx * push * fb, y: b.position.y + sy * push * fb } };
         moving = true;
       }
+    }
+  }
+  // Edge clearance: a box may not sit on a line it isn't part of. Push the box
+  // off the line (and the line's ends slightly the other way), position-based.
+  const pos = new Map(next.map((n, i) => [n.id, i]));
+  const free = (n: Node) => !n.dragging && !pinned.has(n.id);
+  for (const e of edges) {
+    const si = pos.get(e.source);
+    const ti = pos.get(e.target);
+    if (si === undefined || ti === undefined) continue;
+    for (let k = 0; k < next.length; k++) {
+      if (k === si || k === ti) continue;
+      const s = next[si]!, t = next[ti]!, n = next[k]!;
+      const ax = cx(s), ay = cy(s), bx = cx(t), by = cy(t);
+      const vx = bx - ax, vy = by - ay;
+      const len2 = vx * vx + vy * vy;
+      if (len2 < 1) continue;
+      const u = ((cx(n) - ax) * vx + (cy(n) - ay) * vy) / len2;
+      if (u <= 0.02 || u >= 0.98) continue;
+      const px = ax + u * vx, py = ay + u * vy;
+      let nx = cx(n) - px, ny = cy(n) - py;
+      let d = Math.hypot(nx, ny);
+      if (d < 0.01) { nx = -vy; ny = vx; d = Math.hypot(nx, ny); }
+      nx /= d; ny /= d;
+      const need = Math.abs(nx) * NODE_W / 2 + Math.abs(ny) * NODE_H / 2 + 20;
+      const dd = Math.hypot(cx(n) - px, cy(n) - py);
+      if (dd >= need - 0.5) continue;
+      const push = (need - dd) * 0.5;
+      const mv = (i: number, f: number) => {
+        const m = next[i]!;
+        if (!free(m)) return;
+        next[i] = { ...m, position: { x: m.position.x + nx * push * f, y: m.position.y + ny * push * f } };
+        moving = true;
+      };
+      mv(k, 1);
+      mv(si, -0.3);
+      mv(ti, -0.3);
     }
   }
   return moving ? next : nodes; // same array => no re-render once settled
