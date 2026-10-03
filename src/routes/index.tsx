@@ -18,7 +18,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
 import { renderLatex } from "@/lib/latex.functions";
-import { Pin } from "lucide-react";
+import { Bookmark, Pin } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -60,7 +60,11 @@ type CardData = {
   relations?: RelationGroup[] | undefined;
   pinned?: boolean;
   onTogglePin?: (id: string) => void;
+  inCollection?: boolean;
+  onToggleCollection?: (id: string) => void;
 };
+
+type Collection = { id: string; name: string; ids: string[] };
 
 const NODE_W = 260;
 const COL_GAP = 120;
@@ -142,7 +146,7 @@ const KIND_STYLES: Record<Kind, { border: string; label: string; chip: string }>
 };
 
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item, expanded, relations, pinned, onTogglePin } = data;
+  const { item, expanded, relations, pinned, onTogglePin, inCollection, onToggleCollection } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   const style = KIND_STYLES[item.kind];
   return (
@@ -158,6 +162,20 @@ function Card({ data }: NodeProps<Node<CardData>>) {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
+          {onToggleCollection && (
+            <button
+              title={inCollection ? "Remove from collection" : "Add to collection"}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleCollection(item.id);
+              }}
+              className={`nodrag rounded p-0.5 transition-colors ${
+                inCollection ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
+              }`}
+            >
+              <Bookmark className="h-3 w-3" fill={inCollection ? "currentColor" : "none"} />
+            </button>
+          )}
           <button
             title={pinned ? "Unpin — let it move freely" : "Pin — keep it in place"}
             onClick={(e) => {
@@ -555,6 +573,7 @@ function forceStep(
 
 const LAYOUT_KEY = "mathgraph-layout-v1";
 const FLOATING_KEY = "mathgraph-floating";
+const COLLECTIONS_KEY = "mathgraph-collections";
 
 function Index() {
   const [mounted, setMounted] = useState(false);
@@ -588,7 +607,7 @@ function Index() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-  const persist = (patch: { layout?: unknown; floating?: boolean }) => {
+  const persist = (patch: { layout?: unknown; floating?: boolean; collections?: Collection[] }) => {
     const uid = userIdRef.current;
     if (uid) {
       void supabase
@@ -597,6 +616,8 @@ function Index() {
     } else {
       if (patch.layout !== undefined) localStorage.setItem(LAYOUT_KEY, JSON.stringify(patch.layout));
       if (patch.floating !== undefined) localStorage.setItem(FLOATING_KEY, patch.floating ? "on" : "off");
+      if (patch.collections !== undefined)
+        localStorage.setItem(COLLECTIONS_KEY, JSON.stringify(patch.collections));
     }
   };
   const [floating, setFloating] = useState(true);
@@ -607,6 +628,61 @@ function Index() {
     setFloating(next);
     persist({ floating: next });
   };
+
+  // Collections: named groups of nodes; optionally show only the active one
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [activeId, setActiveId] = useState<string>("");
+  const [showOnly, setShowOnly] = useState(false);
+  const active = collections.find((c) => c.id === activeId) ?? null;
+  const updateCollections = (next: Collection[]) => {
+    setCollections(next);
+    persist({ collections: next });
+  };
+  const newCollection = () => {
+    const name = window.prompt("Name of the new collection")?.trim();
+    if (!name) return;
+    const c = { id: crypto.randomUUID(), name, ids: [] };
+    updateCollections([...collections, c]);
+    setActiveId(c.id);
+  };
+  const deleteCollection = () => {
+    if (!active || !window.confirm(`Delete collection "${active.name}"?`)) return;
+    updateCollections(collections.filter((c) => c.id !== active.id));
+    setActiveId("");
+    setShowOnly(false);
+  };
+  const toggleInCollection = (id: string) => {
+    if (!active) return;
+    const ids = active.ids.includes(id) ? active.ids.filter((x) => x !== id) : [...active.ids, id];
+    updateCollections(collections.map((c) => (c.id === active.id ? { ...c, ids } : c)));
+  };
+  const visible = useMemo(
+    () => (active && showOnly ? new Set(active.ids) : null),
+    [active, showOnly],
+  );
+  const viewNodes = useMemo(
+    () =>
+      nodes.map((n) => ({
+        ...n,
+        hidden: visible ? !visible.has(n.id) : false,
+        data: {
+          ...n.data,
+          inCollection: active?.ids.includes(n.id) ?? false,
+          onToggleCollection: active ? toggleInCollection : undefined,
+        },
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodes, visible, active, collections],
+  );
+  const viewEdges = useMemo(
+    () =>
+      graph
+        ? visible
+          ? graph.edges.filter((e) => visible.has(e.source) && visible.has(e.target))
+          : graph.edges
+        : [],
+    [graph, visible],
+  );
 
   const saveLayout = (ns: Node<CardData>[]) => {
     const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
@@ -634,13 +710,15 @@ function Index() {
     (async () => {
       let saved: Record<string, { x: number; y: number; pinned: boolean }> = {};
       let fl = true;
+      let cols: Collection[] = [];
       if (userId) {
         const { data: row } = await supabase
           .from("user_preferences" as never)
-          .select("layout, floating")
+          .select("layout, floating, collections")
           .eq("user_id", userId)
           .maybeSingle();
-        const r = row as { layout: typeof saved; floating: boolean } | null;
+        const r = row as { layout: typeof saved; floating: boolean; collections: Collection[] } | null;
+        cols = r?.collections ?? [];
         saved = r?.layout ?? {};
         fl = r?.floating ?? true;
       } else {
@@ -650,8 +728,16 @@ function Index() {
           saved = {};
         }
         fl = localStorage.getItem(FLOATING_KEY) !== "off";
+        try {
+          cols = JSON.parse(localStorage.getItem(COLLECTIONS_KEY) ?? "[]");
+        } catch {
+          cols = [];
+        }
       }
       if (cancelled) return;
+      setCollections(cols);
+      setActiveId("");
+      setShowOnly(false);
       floatingRef.current = fl;
       setFloating(fl);
       pinnedRef.current = new Set(
@@ -673,6 +759,8 @@ function Index() {
     };
   }, [graph, setNodes, authReady, userId]);
 
+  const saveLayoutRef = useRef(saveLayout);
+  saveLayoutRef.current = saveLayout;
   // Animation loop: run the force simulation until it settles
   const simEdges = useMemo<SimEdge[]>(
     () => (graph ? graph.edges.map((e) => ({ source: e.source, target: e.target })) : []),
@@ -680,13 +768,29 @@ function Index() {
   );
   useEffect(() => {
     let raf = 0;
+    let wasMoving = false;
+    let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       if (floatingRef.current)
-        setNodes((ns) => forceStep(ns, simEdges, vels.current, pinnedRef.current));
+        setNodes((ns) => {
+          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current);
+          const moving = next !== ns;
+          // Once the graph comes to rest, save that equilibrium so a refresh
+          // starts already settled.
+          if (wasMoving && !moving && ns.length && !ns.some((n) => n.dragging)) {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => saveLayoutRef.current(ns), 0);
+          }
+          wasMoving = moving;
+          return next;
+        });
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(saveTimer);
+    };
   }, [setNodes, simEdges]);
 
   const toggleExpand = (id: string) =>
@@ -788,6 +892,47 @@ function Index() {
         >
           {floating ? "Disable floating" : "Enable floating"}
         </button>
+        <div className="pointer-events-auto mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <select
+            value={activeId}
+            onChange={(e) => {
+              setActiveId(e.target.value);
+              if (!e.target.value) setShowOnly(false);
+            }}
+            className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground shadow-sm"
+          >
+            <option value="">No collection</option>
+            {collections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.ids.length})
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={newCollection}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+          >
+            New collection
+          </button>
+          {active && (
+            <>
+              <button
+                onClick={() => setShowOnly((v) => !v)}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+              >
+                {showOnly ? "Show all nodes" : "Show only this collection"}
+              </button>
+              <button onClick={deleteCollection} className="text-muted-foreground underline">
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+        {active && (
+          <p className="mt-1 max-w-sm text-[11px] text-muted-foreground">
+            Click the bookmark on a box to add it to or remove it from “{active.name}”.
+          </p>
+        )}
         <div className="pointer-events-auto mt-2 text-xs text-muted-foreground">
           {userId ? (
             <span>
@@ -813,8 +958,8 @@ function Index() {
       )}
       {mounted && graph && (
         <ReactFlow
-          nodes={nodes}
-          edges={graph.edges}
+          nodes={viewNodes}
+          edges={viewEdges}
           onNodesChange={onNodesChange as OnNodesChange<Node>}
           onNodeClick={(_, node) => toggleExpand(node.id)}
           nodeTypes={nodeTypes}
