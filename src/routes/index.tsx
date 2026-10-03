@@ -156,25 +156,24 @@ function Card({ data }: NodeProps<Node<CardData>>) {
   const { item, expanded, relations, pinned, onTogglePin, inCollection, onToggleCollection, tracing, onTrace } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   const style = KIND_STYLES[item.kind];
-  const zoomedOut = useStore((st) => st.transform[2] < 0.45);
-  if (zoomedOut) {
-    return (
-      <div
-        className={`flex items-center justify-center rounded-md border border-foreground/80 border-l-8 bg-background p-4 text-center ${style.border}`}
-        style={{ width: NODE_W, height: NODE_H }}
-      >
-        <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none" isConnectable={false} />
-        <span className="line-clamp-3 text-3xl font-semibold leading-tight">{item.name}</span>
-        <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none" isConnectable={false} />
-      </div>
-    );
-  }
+  const zoom = useStore((st) => st.transform[2]);
+  // Begin revealing detail while still zoomed out; keep the same box and
+  // handles mounted throughout so changing modes never jolts the layout.
+  const detailOpacity = Math.max(0, Math.min(1, (zoom - 0.32) / 0.2));
   return (
     <div
-      className={`cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
-      style={{ width: expanded ? 340 : NODE_W }}
+      className={`relative cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
+      style={{ width: expanded ? 340 : NODE_W, minHeight: NODE_H }}
     >
       <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+      <div
+        className="pointer-events-none absolute inset-3 flex items-center justify-center text-center transition-opacity duration-200"
+        style={{ opacity: 1 - detailOpacity }}
+        aria-hidden={detailOpacity === 1}
+      >
+        <span className="line-clamp-3 text-3xl font-semibold leading-tight text-foreground">{item.name}</span>
+      </div>
+      <div className="transition-opacity duration-200" style={{ opacity: detailOpacity, pointerEvents: detailOpacity < 0.85 ? "none" : "auto" }}>
       <div className="flex items-baseline justify-between gap-2">
         <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest ${style.label}`}>
           <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
@@ -216,7 +215,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <p
         className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
       >
-        <RichText text={item.statement} />
+        {zoom > 0.32 ? <RichText text={item.statement} /> : item.statement.replace(/\$/g, "")}
       </p>
       {item.citation && (
         <p
@@ -277,6 +276,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       {expanded && (
         <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
       )}
+      </div>
       <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none" isConnectable={false} />
     </div>
   );
@@ -678,8 +678,10 @@ function forceStep(
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
   const anyDrag = nodes.some((n) => n.dragging);
-  if (alpha < ALPHA_MIN && !anyDrag) vels.clear();
-  const cool = alpha < ALPHA_MIN && !anyDrag;
+  if (alpha < ALPHA_MIN && !anyDrag) {
+    vels.clear();
+    return nodes;
+  }
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
   const fy = new Float64Array(nodes.length);
@@ -804,7 +806,6 @@ function forceStep(
 
   let moving = false;
   const next = nodes.map((n, i) => {
-    if (cool) return n;
     if (n.dragging || pinned.has(n.id)) {
       vels.set(n.id, { vx: 0, vy: 0 });
       if (n.dragging) moving = true;
@@ -911,6 +912,7 @@ function Index() {
     [data],
   );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const vels = useRef(new Map<string, Vel>());
   const pinnedRef = useRef(new Set<string>());
   const [savedFlash, setSavedFlash] = useState(false);
@@ -1183,6 +1185,8 @@ function Index() {
           };
         }),
       );
+      vels.current.clear();
+      setLayoutVersion((v) => v + 1);
     })();
     return () => {
       cancelled = true;
@@ -1205,6 +1209,7 @@ function Index() {
     return m;
   }, [data]);
   useEffect(() => {
+    if (!layoutVersion) return;
     let raf = 0;
     let wasMoving = false;
     let alpha = 1;
@@ -1212,6 +1217,7 @@ function Index() {
     const tick = () => {
       if (floatingRef.current)
         setNodes((ns) => {
+          if (!ns.length) return ns;
           if (ns.some((n) => n.dragging)) alpha = Math.max(alpha, 0.5);
           alpha *= ALPHA_DECAY;
           const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
@@ -1232,7 +1238,7 @@ function Index() {
       cancelAnimationFrame(raf);
       clearTimeout(saveTimer);
     };
-  }, [setNodes, simEdges]);
+  }, [setNodes, simEdges, simGroups, layoutVersion]);
 
   const toggleExpand = (id: string) =>
     setNodes((ns) =>
