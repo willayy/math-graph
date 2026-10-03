@@ -920,7 +920,7 @@ function Index() {
   const initialLayoutRef = useRef(false);
   const reheatRef = useRef<() => void>(() => {});
   const handleNodesChange: typeof onNodesChange = (changes) => {
-    if (changes.some((change) => change.type === "dimensions")) reheatRef.current();
+    if (!initialLayoutRef.current && changes.some((change) => change.type === "dimensions")) reheatRef.current();
     onNodesChange(changes);
   };
   const vels = useRef(new Map<string, Vel>());
@@ -1187,7 +1187,7 @@ function Index() {
       );
       // A fresh visitor starts from the already-settled shared arrangement.
       // Personal positions always win, including when only some nodes are saved.
-      initialLayoutRef.current = Object.keys(saved).length === 0;
+      initialLayoutRef.current = Object.keys(saved).length === 0 && graph.nodes.every((n) => defaultPositions[n.id]);
       setNodes(
         graph.nodes.map((n) => {
           const s = saved[n.id];
@@ -1226,10 +1226,9 @@ function Index() {
     if (!layoutVersion) return;
     let raf = 0;
     let wasMoving = false;
-    // The bundled layout is already at rest; just allow a mild correction if
-    // card measurements differ from the snapshot. Saved layouts keep their
-    // existing simulation behavior.
-    let alpha = initialLayoutRef.current ? 0.02 : 1;
+    // The bundled layout is already settled, so don't animate it into place.
+    // Dragging or expanding a card wakes the simulation again.
+    let alpha = initialLayoutRef.current ? 0 : 1;
     reheatRef.current = () => { alpha = Math.max(alpha, 0.6); };
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
@@ -1260,6 +1259,7 @@ function Index() {
   }, [setNodes, simEdges, simGroups, layoutVersion]);
 
   const toggleExpand = (id: string) => {
+    initialLayoutRef.current = false;
     reheatRef.current();
     setNodes((ns) =>
       ns.map((n) =>
