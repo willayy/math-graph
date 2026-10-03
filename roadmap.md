@@ -11,3 +11,4 @@
 - [ ] Pin nodes + persist saved graph layout across visits
 - [ ] Group relations by type in expanded card; capitalize Type field
 - [ ] Toggle to disable the floating physics
+- [ ] Prevent edge crossings (untangle force in sim)
