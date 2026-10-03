@@ -12,6 +12,7 @@ import {
   type Node,
   type Edge,
   type NodeProps,
+  type OnNodesChange,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -377,7 +378,7 @@ function Index() {
         <ReactFlow
           nodes={nodes}
           edges={graph.edges}
-          onNodesChange={onNodesChange}
+          onNodesChange={onNodesChange as OnNodesChange<Node>}
           onNodeClick={(_, node) => toggleExpand(node.id)}
           nodeTypes={nodeTypes}
           onInit={setFlow}
