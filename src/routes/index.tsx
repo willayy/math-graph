@@ -125,7 +125,7 @@ function RichText({ text }: { text: string }) {
 }
 
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item, expanded } = data;
+  const { item, expanded, relations } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   return (
     <div
@@ -153,6 +153,40 @@ function Card({ data }: NodeProps<Node<CardData>>) {
         >
           {item.citation}
         </p>
+      )}
+      {expanded && (
+        <dl className="mt-2 space-y-1 border-t border-border pt-2 text-[10px]">
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Type</dt>
+            <dd className="text-foreground/80">{item.kind}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Date</dt>
+            <dd className="text-foreground/80">{item.date ?? "Unknown"}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Creator</dt>
+            <dd className="text-foreground/80">{item.creator ?? "Unknown"}</dd>
+          </div>
+          {item.citation && (
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Source</dt>
+              <dd className="italic text-foreground/80">{item.citation}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+      {expanded && relations && relations.length > 0 && (
+        <div className="mt-2 border-t border-border pt-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Relations
+          </p>
+          <ul className="mt-1 space-y-0.5 text-[11px] leading-snug text-foreground/80">
+            {relations.map((r, i) => (
+              <li key={i}>• {r}</li>
+            ))}
+          </ul>
+        </div>
       )}
       {expanded && (
         <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
