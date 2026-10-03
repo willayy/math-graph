@@ -500,11 +500,14 @@ function Index() {
   };
 
   function togglePin(id: string) {
+    // Compute outside the state updater: StrictMode double-invokes updaters,
+    // which would toggle the pin twice and save the wrong state.
+    const nowPinned = !pinnedRef.current.has(id);
+    if (nowPinned) pinnedRef.current.add(id);
+    else pinnedRef.current.delete(id);
     setNodes((ns) => {
-      if (pinnedRef.current.has(id)) pinnedRef.current.delete(id);
-      else pinnedRef.current.add(id);
       const next = ns.map((n) =>
-        n.id === id ? { ...n, data: { ...n.data, pinned: pinnedRef.current.has(id) } } : n,
+        n.id === id ? { ...n, data: { ...n.data, pinned: nowPinned } } : n,
       );
       saveLayout(next); // pinning always persists immediately
       return next;
