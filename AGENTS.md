@@ -12,3 +12,4 @@
 - Every graph/submission table has a log_change trigger writing change_log, attributed to profiles. Why: global accountable history, including manual data edits.
 - University status is computed by is_academic() from the confirmed email domain, never stored on a user-editable row. Why: prevents self-granted reviewer rights.
 - Graph layout uses measured node dimensions and reheats after expansion or measurement changes. Why: expanded content needs collision clearance without perpetual motion.
+- New visitors start from a bundled settled position snapshot, while personal saved positions take priority. Why: the graph should appear composed immediately without replacing account layouts.
