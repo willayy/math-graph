@@ -990,6 +990,7 @@ function Index() {
   };
   // Canonical filters: hide non-canonical lines, or show only the chain of
   // canonical lines reachable from one box (in both directions).
+  const [strongEdges, setStrongEdges] = useState<string[]>([]);
   const [canonicalOnly, setCanonicalOnly] = useState(false);
   const [traceId, setTraceId] = useState<string | null>(null);
   const trace = useMemo(() => {
@@ -1034,7 +1035,6 @@ function Index() {
   );
   // Strong edges: canonical connections. A theorem has exactly one canonical
   // proof; "used by" and lemma links can be canonical many times over.
-  const [strongEdges, setStrongEdges] = useState<string[]>([]);
   const toggleStrong = (e: Edge) => {
     // Definition edges are always dotted, and lemmas are never canonical
     // results — only theorems and proofs can carry the canonical mark.
