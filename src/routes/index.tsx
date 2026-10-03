@@ -568,22 +568,51 @@ function Index() {
   const vels = useRef(new Map<string, Vel>());
   const pinnedRef = useRef(new Set<string>());
   const [savedFlash, setSavedFlash] = useState(false);
-  const [floating, setFloating] = useState(
-    () => localStorage.getItem(FLOATING_KEY) !== "off",
-  );
+  // Signed-in user: preferences live in the account; otherwise in this browser.
+  const [authReady, setAuthReady] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      userIdRef.current = data.user?.id ?? null;
+      setUserId(data.user?.id ?? null);
+      setEmail(data.user?.email ?? null);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT") return;
+      userIdRef.current = session?.user.id ?? null;
+      setUserId(session?.user.id ?? null);
+      setEmail(session?.user.email ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+  const persist = (patch: { layout?: unknown; floating?: boolean }) => {
+    const uid = userIdRef.current;
+    if (uid) {
+      void supabase
+        .from("user_preferences")
+        .upsert({ user_id: uid, ...patch, updated_at: new Date().toISOString() } as never);
+    } else {
+      if (patch.layout !== undefined) localStorage.setItem(LAYOUT_KEY, JSON.stringify(patch.layout));
+      if (patch.floating !== undefined) localStorage.setItem(FLOATING_KEY, patch.floating ? "on" : "off");
+    }
+  };
+  const [floating, setFloating] = useState(true);
   const floatingRef = useRef(floating);
   const toggleFloating = () => {
     const next = !floatingRef.current;
     floatingRef.current = next;
     setFloating(next);
-    localStorage.setItem(FLOATING_KEY, next ? "on" : "off");
+    persist({ floating: next });
   };
 
   const saveLayout = (ns: Node<CardData>[]) => {
     const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
     for (const n of ns)
       layout[n.id] = { x: n.position.x, y: n.position.y, pinned: pinnedRef.current.has(n.id) };
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+    persist({ layout });
   };
 
   function togglePin(id: string) {
@@ -592,38 +621,57 @@ function Index() {
     const nowPinned = !pinnedRef.current.has(id);
     if (nowPinned) pinnedRef.current.add(id);
     else pinnedRef.current.delete(id);
-    setNodes((ns) => {
-      const next = ns.map((n) =>
-        n.id === id ? { ...n, data: { ...n.data, pinned: nowPinned } } : n,
-      );
-      saveLayout(next); // pinning always persists immediately
-      return next;
-    });
+    setNodes((ns) =>
+      ns.map((n) => (n.id === id ? { ...n, data: { ...n.data, pinned: nowPinned } } : n)),
+    );
+    setTimeout(() => setNodes((ns) => (saveLayout(ns), ns)), 0); // persist once
   }
 
-  // Restore the saved layout (positions + pins) when the graph first loads
+  // Restore the saved layout (positions + pins) and floating setting
   useEffect(() => {
-    if (!graph) return;
-    let saved: Record<string, { x: number; y: number; pinned: boolean }> = {};
-    try {
-      saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
-    } catch {
-      saved = {};
-    }
-    pinnedRef.current = new Set(
-      Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
-    );
-    setNodes(
-      graph.nodes.map((n) => {
-        const s = saved[n.id];
-        return {
-          ...n,
-          position: s ? { x: s.x, y: s.y } : n.position,
-          data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
-        };
-      }),
-    );
-  }, [graph, setNodes]);
+    if (!graph || !authReady) return;
+    let cancelled = false;
+    (async () => {
+      let saved: Record<string, { x: number; y: number; pinned: boolean }> = {};
+      let fl = true;
+      if (userId) {
+        const { data: row } = await supabase
+          .from("user_preferences" as never)
+          .select("layout, floating")
+          .eq("user_id", userId)
+          .maybeSingle();
+        const r = row as { layout: typeof saved; floating: boolean } | null;
+        saved = r?.layout ?? {};
+        fl = r?.floating ?? true;
+      } else {
+        try {
+          saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
+        } catch {
+          saved = {};
+        }
+        fl = localStorage.getItem(FLOATING_KEY) !== "off";
+      }
+      if (cancelled) return;
+      floatingRef.current = fl;
+      setFloating(fl);
+      pinnedRef.current = new Set(
+        Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
+      );
+      setNodes(
+        graph.nodes.map((n) => {
+          const s = saved[n.id];
+          return {
+            ...n,
+            position: s ? { x: s.x, y: s.y } : n.position,
+            data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
+          };
+        }),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [graph, setNodes, authReady, userId]);
 
   // Animation loop: run the force simulation until it settles
   const simEdges = useMemo<SimEdge[]>(
