@@ -327,11 +327,11 @@ function clearEdgeCorridors(nodes: Node<CardData>[], edges: SimEdge[], pinned: S
     for (const edge of edges) {
       const si = byId.get(edge.source), ti = byId.get(edge.target);
       if (si === undefined || ti === undefined) continue;
+      const points = edgePoints(next[si]!, next[ti]!);
+      if (!points.length) continue;
       for (let i = 0; i < next.length; i++) {
         if (i === si || i === ti) continue;
         const node = next[i]!;
-        const points = edgePoints(next[si]!, next[ti]!);
-        if (!points.length) continue;
         const cx = node.position.x + nodeWidth(node) / 2;
         const cy = node.position.y + nodeHeight(node) / 2;
         let best: { x: number; y: number; distance: number; need: number } | null = null;
