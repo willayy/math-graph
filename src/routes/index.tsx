@@ -869,30 +869,32 @@ function Index() {
             </ul>
           )}
         </div>
-        <button
-          onClick={() => {
-            saveLayout(nodes);
-            setSavedFlash(true);
-            setTimeout(() => setSavedFlash(false), 1500);
-          }}
-          className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
-        >
-          {savedFlash ? "Layout saved ✓" : "Save layout"}
-        </button>
-        <button
-          onClick={toggleFloating}
-          className="pointer-events-auto ml-2 mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
-        >
-          {floating ? "Disable floating" : "Enable floating"}
-        </button>
-        <div className="pointer-events-auto mt-2 flex flex-wrap items-center gap-2 text-xs">
+      </header>
+      <div className="absolute right-0 top-0 z-10 w-60 p-6">
+        <div className="pointer-events-auto flex flex-col gap-2 text-xs">
+          <button
+            onClick={() => {
+              saveLayout(nodes);
+              setSavedFlash(true);
+              setTimeout(() => setSavedFlash(false), 1500);
+            }}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+          >
+            {savedFlash ? "Layout saved ✓" : "Save layout"}
+          </button>
+          <button
+            onClick={toggleFloating}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+          >
+            {floating ? "Disable floating" : "Enable floating"}
+          </button>
           <select
             value={activeId}
             onChange={(e) => {
               setActiveId(e.target.value);
               if (!e.target.value) setShowOnly(false);
             }}
-            className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground shadow-sm"
+            className="rounded-md border border-border bg-background px-2 py-1.5 text-foreground shadow-sm"
           >
             <option value="">No collection</option>
             {collections.map((c) => (
@@ -908,39 +910,42 @@ function Index() {
             New collection
           </button>
           {active && (
-            <>
-              <button
-                onClick={() => setShowOnly((v) => !v)}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-              >
-                {showOnly ? "Show all nodes" : "Show only this collection"}
-              </button>
-              <button onClick={deleteCollection} className="text-muted-foreground underline">
-                Delete
-              </button>
-            </>
+            <button
+              onClick={() => setShowOnly((v) => !v)}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+            >
+              {showOnly ? "Show all nodes" : "Show only this collection"}
+            </button>
+          )}
+          {active && (
+            <button
+              onClick={deleteCollection}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+            >
+              Delete collection
+            </button>
+          )}
+          {active && (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Click the bookmark on a box to add it to or remove it from “{active.name}”.
+            </p>
           )}
         </div>
-        {active && (
-          <p className="mt-1 max-w-sm text-[11px] text-muted-foreground">
-            Click the bookmark on a box to add it to or remove it from “{active.name}”.
-          </p>
+      </div>
+      <div className="pointer-events-auto absolute bottom-0 left-0 z-10 p-6 text-xs text-muted-foreground">
+        {userId ? (
+          <span>
+            Signed in as {email} — your layout is saved to your account.{" "}
+            <button onClick={() => supabase.auth.signOut()} className="underline">
+              Sign out
+            </button>
+          </span>
+        ) : (
+          <span>
+            <Link to="/auth" className="underline">Sign in</Link> to keep your layout on any device.
+          </span>
         )}
-        <div className="pointer-events-auto mt-2 text-xs text-muted-foreground">
-          {userId ? (
-            <span>
-              Signed in as {email} — your layout is saved to your account.{" "}
-              <button onClick={() => supabase.auth.signOut()} className="underline">
-                Sign out
-              </button>
-            </span>
-          ) : (
-            <span>
-              <Link to="/auth" className="underline">Sign in</Link> to keep your layout on any device.
-            </span>
-          )}
-        </div>
-      </header>
+      </div>
       {(isLoading || !mounted) && (
         <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
       )}
