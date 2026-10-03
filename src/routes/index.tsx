@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -50,7 +50,7 @@ type Row = {
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
-type CardData = { item: Item };
+type CardData = { item: Item; expanded?: boolean };
 
 const NODE_W = 260;
 const COL_GAP = 120;
