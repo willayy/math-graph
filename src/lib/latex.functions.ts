@@ -19,7 +19,9 @@ export const renderLatex = createServerFn({ method: "GET" })
     const svg = new SVG({ fontCache: "local" });
     const doc = mathjax.document("", { InputJax: tex, OutputJax: svg });
     const node = doc.convert(data.tex, { display: false });
-    let html = adaptor.outerHTML(node);
+    // innerHTML gives the bare <svg> (outerHTML wraps it in <mjx-container>,
+    // which is not a valid standalone SVG document for an <img>)
+    let html = adaptor.innerHTML(node);
     // Fixed dark fill — the SVG is shown as an <img>, so it can't inherit CSS color
     html = html.replace("<svg ", '<svg fill="#3f3f46" ');
     return { svg: html };
