@@ -44,6 +44,7 @@ type Row = {
   name: string;
   creator: string | null;
   statement: string;
+  citation: string | null;
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
@@ -98,6 +99,11 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <p className="mt-1 line-clamp-3 text-xs leading-snug text-foreground/75">
         {item.statement}
       </p>
+      {item.citation && (
+        <p className="mt-1.5 line-clamp-1 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground">
+          {item.citation}
+        </p>
+      )}
       <Handle type="source" position={Position.Right} className="!bg-foreground" />
     </div>
   );
