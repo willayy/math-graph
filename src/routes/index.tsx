@@ -290,6 +290,85 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const nodeWidth = (node: Node<CardData>) => node.measured?.width ?? (node.data.expanded ? 340 : NODE_W);
 const nodeHeight = (node: Node<CardData>) => node.measured?.height ?? NODE_H;
 
+// Use the same anchors and Bezier controls as the rendered edge when checking
+// whether another card occupies its buffered path.
+function edgePoints(source: Node<CardData>, target: Node<CardData>) {
+  const center = (n: Node<CardData>) => ({ x: n.position.x + nodeWidth(n) / 2, y: n.position.y + nodeHeight(n) / 2 });
+  const a = center(source), b = center(target);
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const bound = (n: Node<CardData>, c: typeof a, vx: number, vy: number) => {
+    const scale = Math.min(vx ? nodeWidth(n) / 2 / Math.abs(vx) : Infinity, vy ? nodeHeight(n) / 2 / Math.abs(vy) : Infinity);
+    return { x: c.x + vx * scale, y: c.y + vy * scale };
+  };
+  if (!dx && !dy) return [];
+  const start = bound(source, a, dx, dy), end = bound(target, b, -dx, -dy);
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const offset = (distance: number) => distance >= 0 ? distance / 2 : 6.25 * Math.sqrt(-distance);
+  const distance = horizontal ? end.x - start.x : end.y - start.y;
+  const direction = horizontal ? Math.sign(dx) : Math.sign(dy);
+  const control = offset(distance * direction) * direction;
+  const c1 = { x: start.x + (horizontal ? control : 0), y: start.y + (horizontal ? 0 : control) };
+  const c2 = { x: end.x - (horizontal ? control : 0), y: end.y - (horizontal ? 0 : control) };
+  return Array.from({ length: 17 }, (_, i) => {
+    const t = i / 16, s = 1 - t;
+    return {
+      x: s ** 3 * start.x + 3 * s ** 2 * t * c1.x + 3 * s * t ** 2 * c2.x + t ** 3 * end.x,
+      y: s ** 3 * start.y + 3 * s ** 2 * t * c1.y + 3 * s * t ** 2 * c2.y + t ** 3 * end.y,
+    };
+  });
+}
+
+function clearEdgeCorridors(nodes: Node<CardData>[], edges: SimEdge[], pinned: Set<string>) {
+  const next = [...nodes];
+  const byId = new Map(next.map((n, i) => [n.id, i]));
+  let moved = false;
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false;
+    for (const edge of edges) {
+      const si = byId.get(edge.source), ti = byId.get(edge.target);
+      if (si === undefined || ti === undefined) continue;
+      for (let i = 0; i < next.length; i++) {
+        if (i === si || i === ti) continue;
+        const node = next[i]!;
+        const points = edgePoints(next[si]!, next[ti]!);
+        if (!points.length) continue;
+        const cx = node.position.x + nodeWidth(node) / 2;
+        const cy = node.position.y + nodeHeight(node) / 2;
+        let best: { x: number; y: number; distance: number; need: number } | null = null;
+        for (let j = 1; j < points.length; j++) {
+          const a = points[j - 1]!, b = points[j]!;
+          const vx = b.x - a.x, vy = b.y - a.y;
+          const u = Math.max(0, Math.min(1, ((cx - a.x) * vx + (cy - a.y) * vy) / (vx * vx + vy * vy || 1)));
+          const px = a.x + u * vx, py = a.y + u * vy;
+          let nx = cx - px, ny = cy - py;
+          let distance = Math.hypot(nx, ny);
+          if (distance < 0.01) { nx = -vy; ny = vx; distance = Math.hypot(nx, ny) || 1; }
+          nx /= distance; ny /= distance;
+          const need = Math.abs(nx) * nodeWidth(node) / 2 + Math.abs(ny) * nodeHeight(node) / 2 + EDGE_BUFFER;
+          if (!best || distance - need < best.distance - best.need) best = { x: nx, y: ny, distance, need };
+        }
+        if (!best || best.distance >= best.need - 0.5) continue;
+        const push = best.need - best.distance + 1;
+        const movable = !node.dragging && !pinned.has(node.id);
+        if (movable) {
+          next[i] = { ...node, position: { x: node.position.x + best.x * push, y: node.position.y + best.y * push } };
+        } else {
+          // A pinned or dragged obstruction stays put; move the line's endpoints instead.
+          for (const endpoint of [si, ti]) {
+            const other = next[endpoint]!;
+            if (other.dragging || pinned.has(other.id)) continue;
+            next[endpoint] = { ...other, position: { x: other.position.x - best.x * push, y: other.position.y - best.y * push } };
+          }
+        }
+        changed = true;
+        moved = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return moved ? next : nodes;
+}
+
 // A convex outline follows the actual member boxes instead of enclosing unrelated
 // nodes in a large rectangular bounding box.
 function setHull(points: { x: number; y: number }[]) {
