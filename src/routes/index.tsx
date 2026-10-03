@@ -52,7 +52,13 @@ type Row = {
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
-type CardData = { item: Item; expanded?: boolean; relations?: string[] | undefined };
+type CardData = {
+  item: Item;
+  expanded?: boolean;
+  relations?: string[] | undefined;
+  pinned?: boolean;
+  onTogglePin?: (id: string) => void;
+};
 
 const NODE_W = 260;
 const COL_GAP = 120;
@@ -134,7 +140,7 @@ const KIND_STYLES: Record<Kind, { border: string; label: string; chip: string }>
 };
 
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item, expanded, relations } = data;
+  const { item, expanded, relations, pinned, onTogglePin } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
   const style = KIND_STYLES[item.kind];
   return (
@@ -148,7 +154,21 @@ function Card({ data }: NodeProps<Node<CardData>>) {
           <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
           {item.kind}
         </span>
-        <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
+          <button
+            title={pinned ? "Unpin — let it move freely" : "Pin — keep it in place"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin?.(item.id);
+            }}
+            className={`nodrag rounded p-0.5 transition-colors ${
+              pinned ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
+            }`}
+          >
+            <Pin className="h-3 w-3" fill={pinned ? "currentColor" : "none"} />
+          </button>
+        </span>
       </div>
       <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">
         {item.name}
