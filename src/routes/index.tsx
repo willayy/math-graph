@@ -476,17 +476,19 @@ function buildGraph(
 type Vel = { vx: number; vy: number };
 type SimEdge = { source: string; target: string };
 
-const REPULSION = 340000; // inverse-square strength — dominates all other forces
-const REPULSE_RANGE = 700;
+const REPULSION = 700000; // inverse-square strength — dominates all other forces
+const REPULSE_RANGE = 1200;
 const SPRING_K = 0.004;
 const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
-const GRAVITY = 0.003;
+const GRAVITY = 0.0012;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
-const UNTANGLE = 80; // force pushing crossing edges apart
-const SET_K = 0.0009; // pull between boxes sharing a set
-const KIND_K = 0.00035; // weaker pull between boxes of the same kind
+const UNTANGLE = 4; // gentle push between crossing edges
+const SET_PULL = 0.002; // pull toward the centre of each set the box belongs to
+const KIND_PULL = 0.0008; // weaker pull toward the centre of the box's kind
+const ALPHA_DECAY = 0.985; // "temperature" cools every frame so the graph always settles
+const ALPHA_MIN = 0.004;
 
 // Segment intersection test (proper crossings only; shared endpoints excluded by caller)
 function segmentsCross(
@@ -508,8 +510,12 @@ function forceStep(
   vels: Map<string, Vel>,
   pinned: Set<string>,
   groups: Map<string, { kind: string; sets: string[] }>,
+  alpha: number,
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
+  const anyDrag = nodes.some((n) => n.dragging);
+  if (alpha < ALPHA_MIN && !anyDrag) vels.clear();
+  const cool = alpha < ALPHA_MIN && !anyDrag;
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
   const fy = new Float64Array(nodes.length);
@@ -526,12 +532,14 @@ function forceStep(
         dx = Math.random() - 0.5;
         dy = Math.random() - 0.5;
       }
-      const dist = Math.max(Math.hypot(dx, dy), 20); // clamp: avoids huge forces at tiny distances
-      if (dist > REPULSE_RANGE) continue;
-      let f = REPULSION / (dist * dist);
-      const overlapX = NODE_W + 24 - Math.abs(dx);
-      const overlapY = NODE_H + 24 - Math.abs(dy);
-      if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.15;
+      const raw = Math.hypot(dx, dy);
+      if (raw > REPULSE_RANGE) continue;
+      const dist = Math.max(raw, 60); // clamp: avoids huge forces at tiny distances
+      const fade = 1 - raw / REPULSE_RANGE; // smooth falloff, no jump at the range edge
+      let f = (REPULSION / (dist * dist)) * fade * fade;
+      const overlapX = NODE_W + 60 - Math.abs(dx);
+      const overlapY = NODE_H + 60 - Math.abs(dy);
+      if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.4;
       const ux = dx / dist;
       const uy = dy / dist;
       fx[i]! -= f * ux;
@@ -555,29 +563,33 @@ function forceStep(
     fy[j]! -= ey * SPRING_K;
   }
 
-  // Clustering: boxes in the same set pull toward each other; boxes of the
-  // same kind pull toward each other with a weaker force. Linear springs with
-  // no rest length, so groups gather into loose clusters.
-  for (let i = 0; i < nodes.length; i++) {
-    const ga = groups.get(nodes[i]!.id);
-    if (!ga) continue;
-    for (let j = i + 1; j < nodes.length; j++) {
-      const gb = groups.get(nodes[j]!.id);
-      if (!gb) continue;
-      let k = 0;
-      if (ga.sets.some((s) => gb.sets.includes(s))) k += SET_K;
-      if (ga.kind === gb.kind) k += KIND_K;
-      if (k === 0) continue;
-      const a = nodes[i]!;
-      const b = nodes[j]!;
-      const dx = cx(b) - cx(a);
-      const dy = cy(b) - cy(a);
-      fx[i]! += dx * k;
-      fy[i]! += dy * k;
-      fx[j]! -= dx * k;
-      fy[j]! -= dy * k;
-    }
-  }
+  // Clustering: each box is pulled toward the centre of its sets and (more
+  // weakly) of its kind. Pulling toward a group centre keeps the force size
+  // independent of group size, so big groups don't collapse.
+  const centres = new Map<string, { x: number; y: number; n: number }>();
+  const add = (key: string, n: Node) => {
+    const c = centres.get(key) ?? { x: 0, y: 0, n: 0 };
+    c.x += cx(n); c.y += cy(n); c.n++;
+    centres.set(key, c);
+  };
+  nodes.forEach((n) => {
+    const g = groups.get(n.id);
+    if (!g) return;
+    add("k:" + g.kind, n);
+    g.sets.forEach((s) => add("s:" + s, n));
+  });
+  nodes.forEach((n, i) => {
+    const g = groups.get(n.id);
+    if (!g) return;
+    const pull = (key: string, k: number) => {
+      const c = centres.get(key);
+      if (!c || c.n < 2) return;
+      fx[i]! += (c.x / c.n - cx(n)) * k;
+      fy[i]! += (c.y / c.n - cy(n)) * k;
+    };
+    pull("k:" + g.kind, KIND_PULL);
+    g.sets.forEach((s) => pull("s:" + s, SET_PULL));
+  });
 
   // Untangle: any two crossing edges push their endpoints apart along the
   // line between their midpoints, so the layout works toward planarity.
@@ -628,14 +640,15 @@ function forceStep(
 
   let moving = false;
   const next = nodes.map((n, i) => {
+    if (cool) return n;
     if (n.dragging || pinned.has(n.id)) {
       vels.set(n.id, { vx: 0, vy: 0 });
       if (n.dragging) moving = true;
       return n;
     }
     const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
-    let vx = (v.vx + fx[i]! + (mx - cx(n)) * GRAVITY) * DAMPING;
-    let vy = (v.vy + fy[i]! + (my - cy(n)) * GRAVITY) * DAMPING;
+    let vx = (v.vx + (fx[i]! + (mx - cx(n)) * GRAVITY) * alpha) * DAMPING;
+    let vy = (v.vy + (fy[i]! + (my - cy(n)) * GRAVITY) * alpha) * DAMPING;
     const sp = Math.hypot(vx, vy);
     if (sp > MAX_SPEED) {
       vx = (vx / sp) * MAX_SPEED;
@@ -656,6 +669,31 @@ function forceStep(
     moving = true;
     return { ...n, position: { x: n.position.x + vx, y: n.position.y + vy } };
   });
+  // Collision pass: directly separate overlapping boxes (position-based, so it
+  // can't oscillate) and keep a clear gap between neighbours.
+  const GAP = 50;
+  for (let iter = 0; iter < 2; iter++) {
+    for (let i = 0; i < next.length; i++) {
+      for (let j = i + 1; j < next.length; j++) {
+        const a = next[i]!;
+        const b = next[j]!;
+        const dx = b.position.x - a.position.x;
+        const dy = b.position.y - a.position.y;
+        const ox = NODE_W + GAP - Math.abs(dx);
+        const oy = NODE_H + GAP - Math.abs(dy);
+        if (ox <= 0.5 || oy <= 0.5) continue;
+        const fa = a.dragging || pinned.has(a.id) ? 0 : 1;
+        const fb = b.dragging || pinned.has(b.id) ? 0 : 1;
+        if (fa + fb === 0) continue;
+        const push = (ox < oy ? ox : oy) / (fa + fb);
+        const sx = ox < oy ? (dx >= 0 ? 1 : -1) : 0;
+        const sy = ox < oy ? 0 : dy >= 0 ? 1 : -1;
+        if (fa) next[i] = { ...a, position: { x: a.position.x - sx * push * fa, y: a.position.y - sy * push * fa } };
+        if (fb) next[j] = { ...b, position: { x: b.position.x + sx * push * fb, y: b.position.y + sy * push * fb } };
+        moving = true;
+      }
+    }
+  }
   return moving ? next : nodes; // same array => no re-render once settled
 }
 
@@ -858,11 +896,14 @@ function Index() {
   useEffect(() => {
     let raf = 0;
     let wasMoving = false;
+    let alpha = 1;
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       if (floatingRef.current)
         setNodes((ns) => {
-          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups);
+          if (ns.some((n) => n.dragging)) alpha = Math.max(alpha, 0.5);
+          alpha *= ALPHA_DECAY;
+          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
           const moving = next !== ns;
           // Once the graph comes to rest, save that equilibrium so a refresh
           // starts already settled.
@@ -991,7 +1032,8 @@ function Index() {
                 setActiveId(e.target.value);
                 if (!e.target.value) setShowOnly(false);
               }}
-              className="w-full appearance-none rounded-md border border-border bg-background py-1.5 pl-3 pr-9 text-left text-foreground shadow-sm"
+              style={{ textAlignLast: "center" }}
+              className="w-full appearance-none rounded-md border border-border bg-background px-9 py-1.5 text-center text-foreground shadow-sm"
             >
               <option value="">No collection</option>
               {collections.map((c) => (
