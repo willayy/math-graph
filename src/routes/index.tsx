@@ -290,6 +290,87 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const nodeWidth = (node: Node<CardData>) => node.measured?.width ?? (node.data.expanded ? 340 : NODE_W);
 const nodeHeight = (node: Node<CardData>) => node.measured?.height ?? NODE_H;
 
+// Use the same anchors and Bezier controls as the rendered edge when checking
+// whether another card occupies its buffered path.
+function edgePoints(source: Node<CardData>, target: Node<CardData>) {
+  const center = (n: Node<CardData>) => ({ x: n.position.x + nodeWidth(n) / 2, y: n.position.y + nodeHeight(n) / 2 });
+  const a = center(source), b = center(target);
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const bound = (n: Node<CardData>, c: typeof a, vx: number, vy: number) => {
+    const scale = Math.min(vx ? nodeWidth(n) / 2 / Math.abs(vx) : Infinity, vy ? nodeHeight(n) / 2 / Math.abs(vy) : Infinity);
+    return { x: c.x + vx * scale, y: c.y + vy * scale };
+  };
+  if (!dx && !dy) return [];
+  const start = bound(source, a, dx, dy), end = bound(target, b, -dx, -dy);
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const offset = (distance: number) => distance >= 0 ? distance / 2 : 6.25 * Math.sqrt(-distance);
+  const distance = horizontal ? end.x - start.x : end.y - start.y;
+  const direction = horizontal ? Math.sign(dx) : Math.sign(dy);
+  const control = offset(distance * direction) * direction;
+  const c1 = { x: start.x + (horizontal ? control : 0), y: start.y + (horizontal ? 0 : control) };
+  const c2 = { x: end.x - (horizontal ? control : 0), y: end.y - (horizontal ? 0 : control) };
+  return Array.from({ length: 17 }, (_, i) => {
+    const t = i / 16, s = 1 - t;
+    return {
+      x: s ** 3 * start.x + 3 * s ** 2 * t * c1.x + 3 * s * t ** 2 * c2.x + t ** 3 * end.x,
+      y: s ** 3 * start.y + 3 * s ** 2 * t * c1.y + 3 * s * t ** 2 * c2.y + t ** 3 * end.y,
+    };
+  });
+}
+
+function clearEdgeCorridors(nodes: Node<CardData>[], edges: SimEdge[], pinned: Set<string>) {
+  const next = [...nodes];
+  const byId = new Map(next.map((n, i) => [n.id, i]));
+  let moved = false;
+  for (let pass = 0; pass < 16; pass++) {
+    let changed = false;
+    for (const edge of edges) {
+      const si = byId.get(edge.source), ti = byId.get(edge.target);
+      if (si === undefined || ti === undefined) continue;
+      const points = edgePoints(next[si]!, next[ti]!);
+      if (!points.length) continue;
+      for (let i = 0; i < next.length; i++) {
+        if (i === si || i === ti) continue;
+        const node = next[i]!;
+        const cx = node.position.x + nodeWidth(node) / 2;
+        const cy = node.position.y + nodeHeight(node) / 2;
+        let best: { x: number; y: number; distance: number; need: number } | null = null;
+        for (let j = 1; j < points.length; j++) {
+          const a = points[j - 1]!, b = points[j]!;
+          const vx = b.x - a.x, vy = b.y - a.y;
+          const u = Math.max(0, Math.min(1, ((cx - a.x) * vx + (cy - a.y) * vy) / (vx * vx + vy * vy || 1)));
+          const px = a.x + u * vx, py = a.y + u * vy;
+          let nx = cx - px, ny = cy - py;
+          let distance = Math.hypot(nx, ny);
+          if (distance < 0.01) { nx = -vy; ny = vx; distance = Math.hypot(nx, ny) || 1; }
+          nx /= distance; ny /= distance;
+          const need = Math.abs(nx) * nodeWidth(node) / 2 + Math.abs(ny) * nodeHeight(node) / 2 + EDGE_BUFFER;
+          if (!best || distance < best.distance) best = { x: nx, y: ny, distance, need };
+        }
+        if (!best || best.distance >= best.need - 0.5) continue;
+        const push = best.need - best.distance + 1;
+        const movable = !node.dragging && !pinned.has(node.id);
+        if (movable) {
+          next[i] = { ...node, position: { x: node.position.x + best.x * push, y: node.position.y + best.y * push } };
+          changed = true;
+          moved = true;
+        } else {
+          // A pinned or dragged obstruction stays put; move the line's endpoints instead.
+          for (const endpoint of [si, ti]) {
+            const other = next[endpoint]!;
+            if (other.dragging || pinned.has(other.id)) continue;
+            next[endpoint] = { ...other, position: { x: other.position.x - best.x * push, y: other.position.y - best.y * push } };
+            changed = true;
+            moved = true;
+          }
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  return moved ? next : nodes;
+}
+
 // A convex outline follows the actual member boxes instead of enclosing unrelated
 // nodes in a large rectangular bounding box.
 function setHull(points: { x: number; y: number }[]) {
@@ -851,7 +932,7 @@ function forceStep(
   const anyDrag = nodes.some((n) => n.dragging);
   if (alpha < ALPHA_MIN && !anyDrag) {
     vels.clear();
-    return nodes;
+    return clearEdgeCorridors(nodes, edges, pinned);
   }
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
@@ -1043,46 +1124,9 @@ function forceStep(
     }
   };
   separateBoxes(2);
-  // Edge clearance: a box may not sit on a line it isn't part of. Push the box
-  // off the line (and the line's ends slightly the other way), position-based.
-  const pos = new Map(next.map((n, i) => [n.id, i]));
-  const free = (n: Node<CardData>) => !n.dragging && !pinned.has(n.id);
-  for (const e of edges) {
-    const si = pos.get(e.source);
-    const ti = pos.get(e.target);
-    if (si === undefined || ti === undefined) continue;
-    for (let k = 0; k < next.length; k++) {
-      if (k === si || k === ti) continue;
-      const s = next[si]!, t = next[ti]!, n = next[k]!;
-      const ax = cx(s), ay = cy(s), bx = cx(t), by = cy(t);
-      const vx = bx - ax, vy = by - ay;
-      const len2 = vx * vx + vy * vy;
-      if (len2 < 1) continue;
-      const u = ((cx(n) - ax) * vx + (cy(n) - ay) * vy) / len2;
-      if (u <= 0.02 || u >= 0.98) continue;
-      const px = ax + u * vx, py = ay + u * vy;
-      let nx = cx(n) - px, ny = cy(n) - py;
-      let d = Math.hypot(nx, ny);
-      if (d < 0.01) { nx = -vy; ny = vx; d = Math.hypot(nx, ny); }
-      nx /= d; ny /= d;
-      // EDGE_BUFFER: a no-go corridor on each side of every line.
-       const need = Math.abs(nx) * nodeWidth(n) / 2 + Math.abs(ny) * nodeHeight(n) / 2 + EDGE_BUFFER;
-      const dd = Math.hypot(cx(n) - px, cy(n) - py);
-      if (dd >= need - 0.5) continue;
-      const push = (need - dd) * 0.525;
-      const mv = (i: number, f: number) => {
-        const m = next[i]!;
-        if (!free(m)) return;
-        next[i] = { ...m, position: { x: m.position.x + nx * push * f, y: m.position.y + ny * push * f } };
-        moving = true;
-      };
-      mv(k, 1);
-      mv(si, -0.3);
-      mv(ti, -0.3);
-    }
-  }
   separateBoxes(8);
-  return moving ? next : nodes; // same array => no re-render once settled
+  const clear = clearEdgeCorridors(next, edges, pinned);
+  return moving || clear !== next ? clear : nodes; // same array => no re-render once settled
 }
 
 const EDGE_BUFFER = 60;
@@ -1161,15 +1205,6 @@ function Index() {
         localStorage.setItem(STRONG_KEY, JSON.stringify(patch.strong_edges));
     }
   };
-  // Floating always starts enabled on each visit; the toggle lasts for the session.
-  const [floating, setFloating] = useState(true);
-  const floatingRef = useRef(floating);
-  const toggleFloating = () => {
-    const next = !floatingRef.current;
-    floatingRef.current = next;
-    setFloating(next);
-  };
-
   // Collections: named groups of nodes; optionally show only the active one
   const [collections, setCollections] = useState<Collection[]>([]);
   const [activeId, setActiveId] = useState<string>("");
@@ -1341,7 +1376,7 @@ function Index() {
     setTimeout(() => setNodes((ns) => (saveLayout(ns), ns)), 0); // persist once
   }
 
-  // Restore the saved layout (positions + pins) and floating setting
+  // Restore saved positions and pins; only unsaved layouts run the simulation.
   useEffect(() => {
     if (!graph || !authReady) return;
     let cancelled = false;
@@ -1393,10 +1428,10 @@ function Index() {
       pinnedRef.current = new Set(
         Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
       );
-      // A fresh visitor starts from the already-settled shared arrangement.
-      // Personal positions always win, including when only some nodes are saved.
-      initialLayoutRef.current = Object.keys(saved).length === 0 && graph.nodes.every((n) => defaultPositions[n.id]);
-       setNodes(separateSetOutlines(
+      // Start new visitors close to the shared arrangement, then let the forces
+      // settle it once. Saved positions always take precedence and stay frozen.
+      initialLayoutRef.current = Object.keys(saved).length === 0;
+       setNodes(clearEdgeCorridors(separateSetOutlines(
          graph.nodes.map((n) => {
           const s = saved[n.id];
           const shared = defaultPositions[n.id];
@@ -1405,7 +1440,7 @@ function Index() {
             position: s ? { x: s.x, y: s.y } : shared ?? n.position,
             data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
           };
-         }), data?.setElements ?? [], pinnedRef.current));
+          }), data?.setElements ?? [], pinnedRef.current), graph.edges, pinnedRef.current));
       vels.current.clear();
       setLayoutVersion((v) => v + 1);
     })();
@@ -1416,7 +1451,7 @@ function Index() {
 
   const saveLayoutRef = useRef(saveLayout);
   saveLayoutRef.current = saveLayout;
-  // Animation loop: run the force simulation until it settles
+  // Run physics once for unsaved layouts, then freeze and save the result.
   const simEdges = useMemo<SimEdge[]>(
     () => (graph ? graph.edges.map((e) => ({ source: e.source, target: e.target })) : []),
     [graph],
@@ -1432,30 +1467,27 @@ function Index() {
   useEffect(() => {
     if (!layoutVersion) return;
     let raf = 0;
-    let wasMoving = false;
-    // The bundled layout is already settled, so don't animate it into place.
-    // Dragging or expanding a card wakes the simulation again.
-    let alpha = initialLayoutRef.current ? 0 : 1;
-    reheatRef.current = () => { alpha = Math.max(alpha, 0.6); };
+    let alpha = initialLayoutRef.current ? 0.35 : 0;
+    let frames = 0;
+    let active = initialLayoutRef.current;
+    reheatRef.current = () => { active = true; frames = 0; alpha = Math.max(alpha, 0.6); };
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
-      if (floatingRef.current)
+      if (active)
         setNodes((ns) => {
           if (!ns.length) return ns;
-          if (ns.some((n) => n.dragging)) {
-            initialLayoutRef.current = false;
-            alpha = Math.max(alpha, 0.5);
-          }
           alpha *= ALPHA_DECAY;
           const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
-          const moving = next !== ns;
-          // Once the graph comes to rest, save that equilibrium so a refresh
-          // starts already settled.
-          if (wasMoving && !moving && ns.length && !ns.some((n) => n.dragging)) {
+          frames++;
+          // Stop after the forces cool, even if a dense cluster cannot reach
+          // a perfect equilibrium. Manual drags do not wake the simulation.
+          if ((next === ns || frames >= 180) && !ns.some((n) => n.dragging)) {
+            active = false;
+            initialLayoutRef.current = false;
+            vels.current.clear();
             clearTimeout(saveTimer);
-            saveTimer = setTimeout(() => saveLayoutRef.current(ns), 0);
+            saveTimer = setTimeout(() => saveLayoutRef.current(next), 0);
           }
-          wasMoving = moving;
           return next;
         });
       raf = requestAnimationFrame(tick);
@@ -1469,7 +1501,6 @@ function Index() {
   }, [setNodes, simEdges, simGroups, layoutVersion]);
 
   const toggleExpand = (id: string) => {
-    initialLayoutRef.current = false;
     reheatRef.current();
     setNodes((ns) =>
       ns.map((n) =>
@@ -1593,10 +1624,21 @@ function Index() {
             {savedFlash ? "Layout saved ✓" : "Save layout"}
           </button>
           <button
-            onClick={toggleFloating}
+            onClick={() => {
+              if (!graph) return;
+              pinnedRef.current.clear();
+              vels.current.clear();
+              initialLayoutRef.current = true;
+              setNodes(graph.nodes.map((n) => ({
+                ...n,
+                position: defaultPositions[n.id] ?? n.position,
+                data: { ...n.data, pinned: false, onTogglePin: togglePin },
+              })));
+              setLayoutVersion((v) => v + 1);
+            }}
             className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
           >
-            {floating ? "Disable floating" : "Enable floating"}
+            Reset positions
           </button>
           <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm hover:bg-muted">
             <input type="checkbox" checked={canonicalOnly} onChange={(e) => setCanonicalOnly(e.target.checked)} className="accent-foreground" />
@@ -1687,6 +1729,12 @@ function Index() {
           nodes={viewNodes}
           edges={viewEdges}
           onNodesChange={handleNodesChange as OnNodesChange<Node>}
+          onNodeDragStop={() => {
+            setNodes((current) => {
+              setTimeout(() => saveLayoutRef.current(current), 0);
+              return current;
+            });
+          }}
           onNodeClick={(_, node) => focusNode(node.id)}
           onEdgeClick={(_, e) => toggleStrong(e)}
           nodeTypes={nodeTypes}
