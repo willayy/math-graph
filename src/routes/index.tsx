@@ -719,7 +719,7 @@ function forceStep(
       const need = Math.abs(nx) * NODE_W / 2 + Math.abs(ny) * NODE_H / 2 + 20;
       const dd = Math.hypot(cx(n) - px, cy(n) - py);
       if (dd >= need - 0.5) continue;
-      const push = (need - dd) * 0.5;
+      const push = (need - dd) * 0.525;
       const mv = (i: number, f: number) => {
         const m = next[i]!;
         if (!free(m)) return;
