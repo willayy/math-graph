@@ -1028,9 +1028,19 @@ function Index() {
   const toggleTrace = (id: string) => setTraceId((cur) => (cur === id ? null : id));
   const visible = useMemo(() => {
     const coll = active && showOnly ? new Set(active.ids) : null;
-    if (!trace) return coll;
-    return coll ? new Set([...trace].filter((x) => coll.has(x))) : trace;
-  }, [active, showOnly, trace]);
+    let base = coll;
+    if (trace) base = coll ? new Set([...trace].filter((x) => coll.has(x))) : trace;
+    if (canonicalOnly && !trace) {
+      const connected = new Set<string>();
+      for (const e of graph.edges) {
+        if (!strongEdges.includes(e.id)) continue;
+        connected.add(e.source);
+        connected.add(e.target);
+      }
+      base = base ? new Set([...base].filter((x) => connected.has(x))) : connected;
+    }
+    return base;
+  }, [active, showOnly, trace, canonicalOnly, graph, strongEdges]);
   const viewNodes = useMemo(
     () =>
       nodes.map((n) => ({
