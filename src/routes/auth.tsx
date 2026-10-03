@@ -21,6 +21,7 @@ function AuthPage() {
   const [mode, setMode] = useState<"in" | "up">("in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -36,11 +37,11 @@ function AuthPage() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: window.location.origin },
+        options: { emailRedirectTo: window.location.origin, data: { full_name: fullName.trim() } },
       });
       if (error) setMsg(error.message);
       else if (data.session) navigate({ to: "/" });
-      else setMsg("Check your email to confirm your account, then sign in.");
+      else setMsg("Check your email to confirm your account, then sign in. Use a university email to submit and review.");
     }
     setBusy(false);
   }
@@ -51,6 +52,13 @@ function AuthPage() {
         <h1 className="text-lg font-semibold text-foreground">
           {mode === "in" ? "Sign in to MathGraph" : "Create an account"}
         </h1>
+        {mode === "up" && (
+          <input
+            required minLength={2} placeholder="Full real name" value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
+        )}
         <input
           type="email" required placeholder="Email" value={email}
           onChange={(e) => setEmail(e.target.value)}

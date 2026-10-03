@@ -44,6 +44,44 @@ export type Database = {
         }
         Relationships: []
       }
+      change_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          summary: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          summary: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          summary?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "change_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conjectures: {
         Row: {
           citation: string | null
@@ -145,6 +183,27 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       proofs: {
         Row: {
           citation: string | null
@@ -245,6 +304,169 @@ export type Database = {
         }
         Relationships: []
       }
+      submission_comments: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+          submission_id: string
+          suggested_statement: string | null
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          id?: string
+          submission_id: string
+          suggested_statement?: string | null
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          submission_id?: string
+          suggested_statement?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submission_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "submission_comments_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      submission_links: {
+        Row: {
+          id: string
+          relation: string
+          submission_id: string
+          target_id: string
+          target_type: string
+        }
+        Insert: {
+          id?: string
+          relation: string
+          submission_id: string
+          target_id: string
+          target_type: string
+        }
+        Update: {
+          id?: string
+          relation?: string
+          submission_id?: string
+          target_id?: string
+          target_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submission_links_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      submission_votes: {
+        Row: {
+          approve: boolean
+          created_at: string
+          submission_id: string
+          voter_id: string
+        }
+        Insert: {
+          approve: boolean
+          created_at?: string
+          submission_id: string
+          voter_id: string
+        }
+        Update: {
+          approve?: boolean
+          created_at?: string
+          submission_id?: string
+          voter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submission_votes_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "submission_votes_voter_id_fkey"
+            columns: ["voter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      submissions: {
+        Row: {
+          author_id: string
+          citation: string | null
+          created_at: string
+          creator: string | null
+          date: string | null
+          id: string
+          kind: string
+          name: string
+          published_id: string | null
+          statement: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          citation?: string | null
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          kind: string
+          name: string
+          published_id?: string | null
+          statement: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          citation?: string | null
+          created_at?: string
+          creator?: string | null
+          date?: string | null
+          id?: string
+          kind?: string
+          name?: string
+          published_id?: string | null
+          statement?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submissions_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       theorem_uses: {
         Row: {
           id: string
@@ -336,7 +558,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_academic: { Args: { _uid: string }; Returns: boolean }
+      publish_if_approved: { Args: { _sid: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
