@@ -7,7 +7,6 @@ import {
   Controls,
   Handle,
   Position,
-  MarkerType,
   BaseEdge,
   getBezierPath,
   useInternalNode,
