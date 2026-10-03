@@ -639,8 +639,6 @@ type SimEdge = { source: string; target: string };
 
 const REPULSION = 700000; // inverse-square strength — dominates all other forces
 const REPULSE_RANGE = 1200;
-const SPRING_K = 0.004;
-const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
 const GRAVITY = 0.0012;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
