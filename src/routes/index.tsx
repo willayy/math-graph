@@ -358,7 +358,7 @@ function buildGraph(
     type: "default", // bezier curve — bends around boxes instead of cutting through
     label,
     markerEnd: arrow,
-    markerStart: twoWay ? arrow : undefined,
+    ...(twoWay ? { markerStart: arrow } : {}),
     style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: dashed ? "4 4" : undefined },
   });
   // Collect all relations, then merge back-and-forth pairs into a single
