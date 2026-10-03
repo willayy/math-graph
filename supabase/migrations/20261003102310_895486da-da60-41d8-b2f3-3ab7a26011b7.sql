@@ -1,0 +1,1 @@
+ALTER TABLE public.user_preferences ADD COLUMN collections jsonb NOT NULL DEFAULT '[]'::jsonb;
