@@ -53,3 +53,5 @@
 - [x] Bring the sets a little closer again without overlapping their dashed outlines or distant-zoom names
 - [ ] Bring in the menu draft changes
 - [ ] Prevent graph nodes from overlapping lines
+- [ ] Settle initial positions using the simulation, then freeze them and remove the floating toggle
+- [ ] Add a reset positions button
