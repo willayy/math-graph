@@ -594,6 +594,120 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
 
 const edgeTypes = { floating: FloatingEdge };
 
+// Shared trigger style for the grouped menu bar segments.
+const segmentBtn =
+  "relative z-30 flex flex-1 items-center justify-center gap-1 whitespace-nowrap px-2 py-2 text-center text-xs font-medium sm:px-3 lg:px-4 lg:py-2.5 lg:text-sm text-foreground transition-colors hover:bg-muted";
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`pointer-events-none h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+// View dropdown: layout saving, floating toggle, canonical filter, trace clear.
+function ViewMenu(props: {
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  savedFlash: boolean;
+  onSave: () => void;
+  floating: boolean;
+  onToggleFloating: () => void;
+  canonicalOnly: boolean;
+  onToggleCanonical: (v: boolean) => void;
+  traceActive: boolean;
+  onClearTrace: () => void;
+}) {
+  const { open, setOpen } = props;
+  const item = "flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted";
+  return (
+    <div className="relative flex flex-1">
+      <button onClick={() => setOpen(!open)} className={`${segmentBtn} rounded-l-xl`}>
+        View <Chevron open={open} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-md border border-border bg-background shadow-md">
+            <p className="border-b border-border px-3 pb-1.5 pt-2.5 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
+              View &amp; layout
+            </p>
+            <div className="py-1">
+              <button
+                onClick={() => {
+                  props.onSave();
+                  setOpen(false);
+                }}
+                className={item}
+              >
+                {props.savedFlash ? "Layout saved ✓" : "Save layout"}
+              </button>
+              <button onClick={props.onToggleFloating} className={item}>
+                {props.floating ? "Disable floating" : "Enable floating"}
+              </button>
+              <label className={`${item} cursor-pointer`}>
+                Canonical relations only
+                <input
+                  type="checkbox"
+                  checked={props.canonicalOnly}
+                  onChange={(e) => props.onToggleCanonical(e.target.checked)}
+                  className="accent-foreground"
+                />
+              </label>
+              {props.traceActive && (
+                <button
+                  onClick={() => {
+                    props.onClearTrace();
+                    setOpen(false);
+                  }}
+                  className={item}
+                >
+                  Clear canonical trace
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Pages dropdown: links to the change history and about pages.
+function PagesMenu({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
+  return (
+    <div className="relative flex flex-1">
+      <button onClick={() => setOpen(!open)} className={segmentBtn}>
+        Pages <Chevron open={open} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-md border border-border bg-background shadow-md">
+            <div className="py-1">
+              <Link to="/history" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
+                Change history
+              </Link>
+              <Link to="/about" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
+                About
+              </Link>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Collections dropdown: a button that opens a panel listing every collection
 // (with its size and a checkmark on the active one) plus the actions that used
 // to be separate buttons — new, show-only, delete.
@@ -611,23 +725,10 @@ function CollectionsMenu(props: {
 }) {
   const { open, setOpen, collections, activeId, activeName, showOnly } = props;
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
-      >
-        <span className="truncate">{activeName ?? "Collections"}</span>
-        <svg
-          className={`pointer-events-none h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+    <div className="relative flex flex-1">
+      <button onClick={() => setOpen(!open)} className={`${segmentBtn} rounded-r-xl`}>
+        <span className="max-w-24 truncate">{activeName ?? "Collections"}</span>
+        <Chevron open={open} />
       </button>
       {open && (
         <div className="absolute right-0 top-full z-20 mt-1 w-full min-w-52 overflow-hidden rounded-md border border-border bg-background shadow-md">
@@ -1210,6 +1311,9 @@ function Index() {
   const [activeId, setActiveId] = useState<string>("");
   const [showOnly, setShowOnly] = useState(false);
   const [collOpen, setCollOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [pagesOpen, setPagesOpen] = useState(false);
+  const [subsOpen, setSubsOpen] = useState(false);
   const active = collections.find((c) => c.id === activeId) ?? null;
   const updateCollections = (next: Collection[]) => {
     setCollections(next);
@@ -1570,12 +1674,12 @@ function Index() {
 
   return (
     <div className="relative h-screen w-screen bg-background">
-      <header className="pointer-events-none absolute left-0 top-0 z-10 p-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">MathGraph</h1>
-        <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+      <header className="pointer-events-none absolute left-0 top-14 z-10 max-w-full p-3 sm:p-6 md:top-0">
+        <h1 className="text-xl font-semibold sm:text-2xl lg:text-3xl tracking-tight text-foreground">MathGraph</h1>
+        <p className="mt-1 hidden max-w-sm text-xs text-muted-foreground sm:block lg:text-sm">
           Arrows point from what is used to what it leads to. Drag to pan, scroll to zoom.
         </p>
-        <div className="pointer-events-auto relative mt-3 w-72">
+        <div className="pointer-events-auto relative mt-3 w-[min(18rem,calc(100vw-1.5rem))] lg:w-80">
           <input
             value={query}
             onChange={(e) => {
@@ -1611,6 +1715,7 @@ function Index() {
           )}
         </div>
       </header>
+<<<<<<< src/routes/index.tsx
       <div className="absolute right-0 top-0 z-10 w-60 p-6">
         <div className="pointer-events-auto flex flex-col gap-2 text-xs">
           <button
@@ -1645,6 +1750,73 @@ function Index() {
             Canonical relations only
           </label>
           <div className="flex flex-col gap-1 rounded-md border border-border bg-background p-2 shadow-sm">
+=======
+      <div className="absolute left-0 right-0 top-0 z-20 p-3 sm:p-6 md:left-auto">
+        <div className="pointer-events-auto flex flex-col items-end gap-2">
+          <div className="flex w-full items-stretch divide-x divide-border rounded-xl md:w-auto md:min-w-[26rem] lg:min-w-[32rem] border border-border bg-background shadow-sm">
+            <ViewMenu
+              open={viewOpen}
+              setOpen={(v) => {
+                setViewOpen(v);
+                if (v) { setPagesOpen(false); setCollOpen(false); setSubsOpen(false); }
+              }}
+              savedFlash={savedFlash}
+              onSave={() => {
+                saveLayout(nodes);
+                setSavedFlash(true);
+                setTimeout(() => setSavedFlash(false), 1500);
+              }}
+              floating={floating}
+              onToggleFloating={toggleFloating}
+              canonicalOnly={canonicalOnly}
+              onToggleCanonical={setCanonicalOnly}
+              traceActive={!!traceId}
+              onClearTrace={() => setTraceId(null)}
+            />
+            <SubmissionsMenu
+              userId={userId}
+              items={(data?.items ?? []).map((i) => ({ id: i.id, name: i.name, kind: i.kind }))}
+              open={subsOpen}
+              setOpen={(v) => {
+                setSubsOpen(v);
+                if (v) { setViewOpen(false); setPagesOpen(false); setCollOpen(false); }
+              }}
+            />
+            <PagesMenu
+              open={pagesOpen}
+              setOpen={(v) => {
+                setPagesOpen(v);
+                if (v) { setViewOpen(false); setCollOpen(false); setSubsOpen(false); }
+              }}
+            />
+            <CollectionsMenu
+              collections={collections}
+              activeId={activeId}
+              activeName={active?.name}
+              showOnly={showOnly}
+              onSelect={(id) => {
+                setActiveId(id);
+                if (!id) setShowOnly(false);
+                setCollOpen(false);
+              }}
+              onToggleShowOnly={() => setShowOnly((v) => !v)}
+              onNew={() => {
+                setCollOpen(false);
+                newCollection();
+              }}
+              onDelete={() => {
+                setCollOpen(false);
+                deleteCollection();
+              }}
+              open={collOpen}
+              setOpen={(v) => {
+                setCollOpen(v);
+                if (v) { setViewOpen(false); setPagesOpen(false); setSubsOpen(false); }
+              }}
+            />
+          </div>
+          <div className="flex w-full flex-col gap-1 rounded-xl text-xs md:w-60 border border-border bg-background p-2 shadow-sm">
+>>>>>>> /tmp/d
             <label htmlFor="set-filter" className="text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
             <select id="set-filter" value={filterSet} onChange={(e) => setFilterSet(e.target.value)} className="w-full bg-background text-foreground outline-none">
               <option value="">All sets</option>
@@ -1658,43 +1830,8 @@ function Index() {
               ))}
             </select>
           </div>
-          {traceId && (
-            <button onClick={() => setTraceId(null)} className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm hover:bg-muted">
-              Clear canonical trace
-            </button>
-          )}
-          <SubmissionsMenu
-            userId={userId}
-            items={(data?.items ?? []).map((i) => ({ id: i.id, name: i.name, kind: i.kind }))}
-          />
-          <div className="flex gap-2">
-            <Link to="/history" className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-center text-foreground shadow-sm hover:bg-muted">History</Link>
-            <Link to="/about" className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-center text-foreground shadow-sm hover:bg-muted">About</Link>
-          </div>
-          <CollectionsMenu
-            collections={collections}
-            activeId={activeId}
-            activeName={active?.name}
-            showOnly={showOnly}
-            onSelect={(id) => {
-              setActiveId(id);
-              if (!id) setShowOnly(false);
-              setCollOpen(false);
-            }}
-            onToggleShowOnly={() => setShowOnly((v) => !v)}
-            onNew={() => {
-              setCollOpen(false);
-              newCollection();
-            }}
-            onDelete={() => {
-              setCollOpen(false);
-              deleteCollection();
-            }}
-            open={collOpen}
-            setOpen={setCollOpen}
-          />
           {active && (
-            <p className="text-[11px] leading-snug text-muted-foreground">
+            <p className="max-w-56 text-right text-[11px] leading-snug text-muted-foreground">
               Click the bookmark on a box to add it to or remove it from “{active.name}”.
             </p>
           )}
