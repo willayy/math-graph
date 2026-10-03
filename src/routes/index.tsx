@@ -17,6 +17,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
+import { renderLatex } from "@/lib/latex.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -81,6 +82,47 @@ async function fetchGraph() {
   return { items, uses: uses.data ?? [] };
 }
 
+// Splits text into plain and $...$ math segments
+function splitMath(text: string): { text: string; math: boolean }[] {
+  const parts: { text: string; math: boolean }[] = [];
+  const re = /\$([^$]+)\$/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push({ text: text.slice(last, m.index), math: false });
+    parts.push({ text: m[1]!, math: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), math: false });
+  return parts;
+}
+
+function Latex({ tex }: { tex: string }) {
+  const { data } = useQuery({
+    queryKey: ["latex", tex],
+    queryFn: () => renderLatex({ data: { tex } }),
+    staleTime: Infinity,
+  });
+  if (!data) return <span className="text-muted-foreground">{tex}</span>;
+  return (
+    <span
+      className="inline-block align-middle [&_svg]:inline [&_svg]:h-[1.1em] [&_svg]:w-auto"
+      dangerouslySetInnerHTML={{ __html: data.svg }}
+    />
+  );
+}
+
+function RichText({ text }: { text: string }) {
+  const parts = useMemo(() => splitMath(text), [text]);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.math ? <Latex key={i} tex={p.text} /> : <span key={i}>{p.text}</span>,
+      )}
+    </>
+  );
+}
+
 function Card({ data }: NodeProps<Node<CardData>>) {
   const { item, expanded } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
@@ -102,7 +144,7 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <p
         className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
       >
-        {item.statement}
+        <RichText text={item.statement} />
       </p>
       {item.citation && (
         <p
