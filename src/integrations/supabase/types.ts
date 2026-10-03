@@ -309,6 +309,7 @@ export type Database = {
           collections: Json
           floating: boolean
           layout: Json
+          strong_edges: Json
           updated_at: string
           user_id: string
         }
@@ -316,6 +317,7 @@ export type Database = {
           collections?: Json
           floating?: boolean
           layout?: Json
+          strong_edges?: Json
           updated_at?: string
           user_id: string
         }
@@ -323,6 +325,7 @@ export type Database = {
           collections?: Json
           floating?: boolean
           layout?: Json
+          strong_edges?: Json
           updated_at?: string
           user_id?: string
         }

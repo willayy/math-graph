@@ -736,6 +736,7 @@ function forceStep(
 
 const LAYOUT_KEY = "mathgraph-layout-v1";
 const COLLECTIONS_KEY = "mathgraph-collections";
+const STRONG_KEY = "mathgraph-strong-edges";
 
 function Index() {
   const [mounted, setMounted] = useState(false);
@@ -769,7 +770,7 @@ function Index() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-  const persist = (patch: { layout?: unknown; collections?: Collection[] }) => {
+  const persist = (patch: { layout?: unknown; collections?: Collection[]; strong_edges?: string[] }) => {
     const uid = userIdRef.current;
     if (uid) {
       void supabase
@@ -779,6 +780,8 @@ function Index() {
       if (patch.layout !== undefined) localStorage.setItem(LAYOUT_KEY, JSON.stringify(patch.layout));
       if (patch.collections !== undefined)
         localStorage.setItem(COLLECTIONS_KEY, JSON.stringify(patch.collections));
+      if (patch.strong_edges !== undefined)
+        localStorage.setItem(STRONG_KEY, JSON.stringify(patch.strong_edges));
     }
   };
   // Floating always starts enabled on each visit; the toggle lasts for the session.
@@ -835,15 +838,42 @@ function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nodes, visible, active, collections],
   );
-  const viewEdges = useMemo(
-    () =>
-      graph
-        ? visible
-          ? graph.edges.filter((e) => visible.has(e.source) && visible.has(e.target))
-          : graph.edges
-        : [],
-    [graph, visible],
-  );
+  // Strong edges: canonical connections. Each node touches at most one.
+  const [strongEdges, setStrongEdges] = useState<string[]>([]);
+  const toggleStrong = (e: Edge) => {
+    const isStrong = strongEdges.includes(e.id);
+    const ends = (id: string) => graph?.edges.find((x) => x.id === id);
+    const next = isStrong
+      ? strongEdges.filter((x) => x !== e.id)
+      : [
+          ...strongEdges.filter((x) => {
+            const o = ends(x);
+            return !o || ![o.source, o.target].some((n) => n === e.source || n === e.target);
+          }),
+          e.id,
+        ];
+    setStrongEdges(next);
+    persist({ strong_edges: next });
+  };
+  const viewEdges = useMemo(() => {
+    if (!graph) return [];
+    const list = visible
+      ? graph.edges.filter((e) => visible.has(e.source) && visible.has(e.target))
+      : graph.edges;
+    return list.map((e) => {
+      const strong = strongEdges.includes(e.id);
+      return {
+        ...e,
+        label: strong ? `${e.label} (canonical)` : e.label,
+        style: {
+          stroke: "var(--foreground)",
+          strokeWidth: strong ? 3 : 1.25,
+          strokeDasharray: strong ? undefined : "5 5",
+          cursor: "pointer",
+        },
+      };
+    });
+  }, [graph, visible, strongEdges]);
 
   const saveLayout = (ns: Node<CardData>[]) => {
     const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
@@ -871,15 +901,17 @@ function Index() {
     (async () => {
       let saved: Record<string, { x: number; y: number; pinned: boolean }> = {};
       let cols: Collection[] = [];
+      let strong: string[] = [];
       if (userId) {
         const { data: row } = await supabase
           .from("user_preferences" as never)
-          .select("layout, collections")
+          .select("layout, collections, strong_edges")
           .eq("user_id", userId)
           .maybeSingle();
-        const r = row as { layout: typeof saved; collections: Collection[] } | null;
+        const r = row as { layout: typeof saved; collections: Collection[]; strong_edges: string[] } | null;
         cols = r?.collections ?? [];
         saved = r?.layout ?? {};
+        strong = r?.strong_edges ?? [];
       } else {
         try {
           saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
@@ -891,9 +923,15 @@ function Index() {
         } catch {
           cols = [];
         }
+        try {
+          strong = JSON.parse(localStorage.getItem(STRONG_KEY) ?? "[]");
+        } catch {
+          strong = [];
+        }
       }
       if (cancelled) return;
       setCollections(cols);
+      setStrongEdges(strong);
       setActiveId("");
       setShowOnly(false);
       pinnedRef.current = new Set(
@@ -1148,6 +1186,7 @@ function Index() {
           edges={viewEdges}
           onNodesChange={onNodesChange as OnNodesChange<Node>}
           onNodeClick={(_, node) => toggleExpand(node.id)}
+          onEdgeClick={(_, e) => toggleStrong(e)}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onInit={setFlow}
