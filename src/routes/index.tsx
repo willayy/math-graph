@@ -514,10 +514,8 @@ function forceStep(
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
   const anyDrag = nodes.some((n) => n.dragging);
-  if (alpha < ALPHA_MIN && !anyDrag) {
-    vels.clear();
-    return nodes;
-  }
+  if (alpha < ALPHA_MIN && !anyDrag) vels.clear();
+  const cool = alpha < ALPHA_MIN && !anyDrag;
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
   const fx = new Float64Array(nodes.length);
   const fy = new Float64Array(nodes.length);
@@ -642,6 +640,7 @@ function forceStep(
 
   let moving = false;
   const next = nodes.map((n, i) => {
+    if (cool) return n;
     if (n.dragging || pinned.has(n.id)) {
       vels.set(n.id, { vx: 0, vy: 0 });
       if (n.dragging) moving = true;
@@ -670,6 +669,31 @@ function forceStep(
     moving = true;
     return { ...n, position: { x: n.position.x + vx, y: n.position.y + vy } };
   });
+  // Collision pass: directly separate overlapping boxes (position-based, so it
+  // can't oscillate) and keep a clear gap between neighbours.
+  const GAP = 50;
+  for (let iter = 0; iter < 2; iter++) {
+    for (let i = 0; i < next.length; i++) {
+      for (let j = i + 1; j < next.length; j++) {
+        const a = next[i]!;
+        const b = next[j]!;
+        const dx = b.position.x - a.position.x;
+        const dy = b.position.y - a.position.y;
+        const ox = NODE_W + GAP - Math.abs(dx);
+        const oy = NODE_H + GAP - Math.abs(dy);
+        if (ox <= 0.5 || oy <= 0.5) continue;
+        const fa = a.dragging || pinned.has(a.id) ? 0 : 1;
+        const fb = b.dragging || pinned.has(b.id) ? 0 : 1;
+        if (fa + fb === 0) continue;
+        const push = (ox < oy ? ox : oy) / (fa + fb);
+        const sx = ox < oy ? (dx >= 0 ? 1 : -1) : 0;
+        const sy = ox < oy ? 0 : dy >= 0 ? 1 : -1;
+        if (fa) next[i] = { ...a, position: { x: a.position.x - sx * push * fa, y: a.position.y - sy * push * fa } };
+        if (fb) next[j] = { ...b, position: { x: b.position.x + sx * push * fb, y: b.position.y + sy * push * fb } };
+        moving = true;
+      }
+    }
+  }
   return moving ? next : nodes; // same array => no re-render once settled
 }
 
