@@ -18,6 +18,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
 import { renderLatex } from "@/lib/latex.functions";
+import { Pin } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -52,7 +53,14 @@ type Row = {
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
-type CardData = { item: Item; expanded?: boolean };
+type RelationGroup = { label: string; items: string[] };
+type CardData = {
+  item: Item;
+  expanded?: boolean;
+  relations?: RelationGroup[] | undefined;
+  pinned?: boolean;
+  onTogglePin?: (id: string) => void;
+};
 
 const NODE_W = 260;
 const COL_GAP = 120;
@@ -79,7 +87,11 @@ async function fetchGraph() {
   });
   const uses = await supabase.from("theorem_uses").select("theorem_id, used_id");
   if (uses.error) throw uses.error;
-  return { items, uses: uses.data ?? [] };
+  const sets = await supabase.from("sets").select("id, name");
+  if (sets.error) throw sets.error;
+  const setElements = await supabase.from("set_elements").select("set_id, element_id");
+  if (setElements.error) throw setElements.error;
+  return { items, uses: uses.data ?? [], sets: sets.data ?? [], setElements: setElements.data ?? [] };
 }
 
 // Splits text into plain and $...$ math segments
@@ -120,20 +132,45 @@ function RichText({ text }: { text: string }) {
   );
 }
 
+const KIND_STYLES: Record<Kind, { border: string; label: string; chip: string }> = {
+  axiom: { border: "border-l-amber-500", label: "text-amber-600", chip: "bg-amber-500" },
+  definition: { border: "border-l-sky-500", label: "text-sky-600", chip: "bg-sky-500" },
+  conjecture: { border: "border-l-rose-500", label: "text-rose-600", chip: "bg-rose-500" },
+  theorem: { border: "border-l-emerald-500", label: "text-emerald-600", chip: "bg-emerald-500" },
+  lemma: { border: "border-l-violet-500", label: "text-violet-600", chip: "bg-violet-500" },
+  proof: { border: "border-l-slate-500", label: "text-slate-600", chip: "bg-slate-500" },
+};
+
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item, expanded } = data;
+  const { item, expanded, relations, pinned, onTogglePin } = data;
   const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
+  const style = KIND_STYLES[item.kind];
   return (
     <div
-      className="cursor-pointer rounded-md border border-foreground/80 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md"
+      className={`cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
       style={{ width: expanded ? 340 : NODE_W }}
     >
       <Handle type="target" position={Position.Left} className="!bg-foreground" />
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest ${style.label}`}>
+          <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
           {item.kind}
         </span>
-        <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
+          <button
+            title={pinned ? "Unpin — let it move freely" : "Pin — keep it in place"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin?.(item.id);
+            }}
+            className={`nodrag rounded p-0.5 transition-colors ${
+              pinned ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
+            }`}
+          >
+            <Pin className="h-3 w-3" fill={pinned ? "currentColor" : "none"} />
+          </button>
+        </span>
       </div>
       <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">
         {item.name}
@@ -151,6 +188,44 @@ function Card({ data }: NodeProps<Node<CardData>>) {
         </p>
       )}
       {expanded && (
+        <dl className="mt-2 space-y-1 border-t border-border pt-2 text-[10px]">
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Type</dt>
+            <dd className="capitalize text-foreground/80">{item.kind}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Date</dt>
+            <dd className="text-foreground/80">{item.date ?? "Unknown"}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Creator</dt>
+            <dd className="text-foreground/80">{item.creator ?? "Unknown"}</dd>
+          </div>
+          {item.citation && (
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Source</dt>
+              <dd className="italic text-foreground/80">{item.citation}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+      {expanded && relations && relations.length > 0 && (
+        <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+          {relations.map((g) => (
+            <div key={g.label}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {g.label}
+              </p>
+              <ul className="mt-0.5 space-y-0.5 text-[11px] leading-snug text-foreground/80">
+                {g.items.map((r, i) => (
+                  <li key={i}>• {r}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      {expanded && (
         <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
       )}
       <Handle type="source" position={Position.Right} className="!bg-foreground" />
@@ -160,13 +235,48 @@ function Card({ data }: NodeProps<Node<CardData>>) {
 
 const nodeTypes = { card: Card };
 
-function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }[]) {
+function buildGraph(
+  items: Item[],
+  uses: { theorem_id: string; used_id: string }[],
+  sets: { id: string; name: string }[],
+  setElements: { set_id: string; element_id: string }[],
+) {
   const byId = new Map(items.map((i) => [i.id, i]));
+  const setById = new Map(sets.map((s) => [s.id, s]));
   const deps = new Map<string, string[]>();
   for (const u of uses) {
     if (!byId.has(u.used_id) || !byId.has(u.theorem_id)) continue;
     deps.set(u.theorem_id, [...(deps.get(u.theorem_id) ?? []), u.used_id]);
   }
+
+  // Human-readable relations for the expanded card, grouped by relation type
+  const relMap = new Map<string, Map<string, string[]>>();
+  const relate = (id: string, label: string, text: string) => {
+    let g = relMap.get(id);
+    if (!g) relMap.set(id, (g = new Map()));
+    g.set(label, [...(g.get(label) ?? []), text]);
+  };
+  for (const [t, ds] of deps) {
+    const theorem = byId.get(t)!;
+    for (const d of ds) {
+      const used = byId.get(d)!;
+      relate(t, "Uses", `${used.name} (${used.kind})`);
+      relate(d, "Used by", `${theorem.name} (${theorem.kind})`);
+    }
+  }
+  for (const i of items) {
+    if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id)) {
+      const theorem = byId.get(i.theorem_id)!;
+      relate(i.id, i.kind === "lemma" ? "Lemma of" : "Proof of", theorem.name);
+      relate(theorem.id, i.kind === "lemma" ? "Lemmas" : "Proofs", i.name);
+    }
+  }
+  for (const se of setElements) {
+    const set = setById.get(se.set_id);
+    if (set && byId.has(se.element_id)) relate(se.element_id, "In sets", set.name);
+  }
+  const toGroups = (g?: Map<string, string[]>): RelationGroup[] | undefined =>
+    g ? [...g.entries()].map(([label, items]) => ({ label, items })) : undefined;
   // Depth = longest chain back to foundations
   const depth = new Map<string, number>();
   const visit = (id: string, stack = new Set<string>()): number => {
@@ -235,24 +345,25 @@ function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }
         id: item.id,
         type: "card",
         position: { x: d * (NODE_W + COL_GAP), y: idx * (NODE_H + ROW_GAP) - total / 2 },
-        data: { item },
+        data: { item, relations: toGroups(relMap.get(item.id)) },
       });
     });
   }
 
-  const edge = (source: string, target: string, dashed = false): Edge => ({
+  const edge = (source: string, target: string, label: string, dashed = false): Edge => ({
     id: `${source}-${target}`,
     source,
     target,
     type: "default", // bezier curve — bends around boxes instead of cutting through
+    label,
     markerEnd: { type: MarkerType.ArrowClosed, color: "currentColor" },
     style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: dashed ? "4 4" : undefined },
   });
   const edges: Edge[] = [];
-  for (const [t, ds] of deps) for (const d of ds) edges.push(edge(d, t));
+  for (const [t, ds] of deps) for (const d of ds) edges.push(edge(d, t, "is used by"));
   for (const i of items)
     if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id))
-      edges.push(edge(i.theorem_id, i.id, true));
+      edges.push(edge(i.theorem_id, i.id, i.kind === "proof" ? "has proof" : "has lemma", true));
   return { nodes, edges };
 }
 
@@ -270,12 +381,28 @@ const REST_DX = NODE_W + 110; // used item sits to the left of what uses it
 const GRAVITY = 0.003;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
-const REST_SPEED = 0.03;
+const REST_SPEED = 0.3;
+const UNTANGLE = 80; // force pushing crossing edges apart
+
+// Segment intersection test (proper crossings only; shared endpoints excluded by caller)
+function segmentsCross(
+  ax: number, ay: number, bx: number, by: number,
+  cx2: number, cy2: number, dx: number, dy: number,
+): boolean {
+  const orient = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) =>
+    (qy - py) * (rx - qx) - (qx - px) * (ry - qy);
+  const o1 = orient(ax, ay, bx, by, cx2, cy2);
+  const o2 = orient(ax, ay, bx, by, dx, dy);
+  const o3 = orient(cx2, cy2, dx, dy, ax, ay);
+  const o4 = orient(cx2, cy2, dx, dy, bx, by);
+  return o1 * o2 < 0 && o3 * o4 < 0;
+}
 
 function forceStep(
   nodes: Node<CardData>[],
   edges: SimEdge[],
   vels: Map<string, Vel>,
+  pinned: Set<string>,
 ): Node<CardData>[] {
   if (nodes.length === 0) return nodes;
   const idx = new Map(nodes.map((n, i) => [n.id, i]));
@@ -294,7 +421,7 @@ function forceStep(
         dx = Math.random() - 0.5;
         dy = Math.random() - 0.5;
       }
-      const dist = Math.hypot(dx, dy);
+      const dist = Math.max(Math.hypot(dx, dy), 20); // clamp: avoids huge forces at tiny distances
       if (dist > REPULSE_RANGE) continue;
       let f = REPULSION / (dist * dist);
       const overlapX = NODE_W + 24 - Math.abs(dx);
@@ -323,6 +450,44 @@ function forceStep(
     fy[j]! -= ey * SPRING_K;
   }
 
+  // Untangle: any two crossing edges push their endpoints apart along the
+  // line between their midpoints, so the layout works toward planarity.
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const e1 = edges[i]!;
+      const e2 = edges[j]!;
+      if (
+        e1.source === e2.source || e1.source === e2.target ||
+        e1.target === e2.source || e1.target === e2.target
+      )
+        continue;
+      const a = idx.get(e1.source);
+      const b = idx.get(e1.target);
+      const c = idx.get(e2.source);
+      const d = idx.get(e2.target);
+      if (a === undefined || b === undefined || c === undefined || d === undefined) continue;
+      const na = nodes[a]!;
+      const nb = nodes[b]!;
+      const nc = nodes[c]!;
+      const nd = nodes[d]!;
+      if (!segmentsCross(cx(na), cy(na), cx(nb), cy(nb), cx(nc), cy(nc), cx(nd), cy(nd)))
+        continue;
+      let ux = (cx(na) + cx(nb)) / 2 - (cx(nc) + cx(nd)) / 2;
+      let uy = (cy(na) + cy(nb)) / 2 - (cy(nc) + cy(nd)) / 2;
+      const len = Math.hypot(ux, uy) || 1;
+      ux /= len;
+      uy /= len;
+      fx[a]! += ux * UNTANGLE;
+      fy[a]! += uy * UNTANGLE;
+      fx[b]! += ux * UNTANGLE;
+      fy[b]! += uy * UNTANGLE;
+      fx[c]! -= ux * UNTANGLE;
+      fy[c]! -= uy * UNTANGLE;
+      fx[d]! -= ux * UNTANGLE;
+      fy[d]! -= uy * UNTANGLE;
+    }
+  }
+
   let mx = 0;
   let my = 0;
   for (const n of nodes) {
@@ -334,9 +499,9 @@ function forceStep(
 
   let moving = false;
   const next = nodes.map((n, i) => {
-    if (n.dragging) {
+    if (n.dragging || pinned.has(n.id)) {
       vels.set(n.id, { vx: 0, vy: 0 });
-      moving = true;
+      if (n.dragging) moving = true;
       return n;
     }
     const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
@@ -347,23 +512,94 @@ function forceStep(
       vx = (vx / sp) * MAX_SPEED;
       vy = (vy / sp) * MAX_SPEED;
     }
+    // Dead zone: kill tiny residual velocities so boxes stop dead instead of
+    // oscillating around equilibrium (the "wobble").
+    if (sp < REST_SPEED) {
+      vels.set(n.id, { vx: 0, vy: 0 });
+      return n;
+    }
+    // Extra braking at low speed so motion decays smoothly into the dead zone
+    if (sp < 2.5) {
+      vx *= 0.6;
+      vy *= 0.6;
+    }
     vels.set(n.id, { vx, vy });
-    if (sp < REST_SPEED) return n;
     moving = true;
     return { ...n, position: { x: n.position.x + vx, y: n.position.y + vy } };
   });
   return moving ? next : nodes; // same array => no re-render once settled
 }
 
+const LAYOUT_KEY = "mathgraph-layout-v1";
+const FLOATING_KEY = "mathgraph-floating";
+
 function Index() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
-  const graph = useMemo(() => (data ? buildGraph(data.items, data.uses) : null), [data]);
+  const graph = useMemo(
+    () => (data ? buildGraph(data.items, data.uses, data.sets, data.setElements) : null),
+    [data],
+  );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
   const vels = useRef(new Map<string, Vel>());
+  const pinnedRef = useRef(new Set<string>());
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [floating, setFloating] = useState(
+    () => localStorage.getItem(FLOATING_KEY) !== "off",
+  );
+  const floatingRef = useRef(floating);
+  const toggleFloating = () => {
+    const next = !floatingRef.current;
+    floatingRef.current = next;
+    setFloating(next);
+    localStorage.setItem(FLOATING_KEY, next ? "on" : "off");
+  };
+
+  const saveLayout = (ns: Node<CardData>[]) => {
+    const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
+    for (const n of ns)
+      layout[n.id] = { x: n.position.x, y: n.position.y, pinned: pinnedRef.current.has(n.id) };
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+  };
+
+  function togglePin(id: string) {
+    // Compute outside the state updater: StrictMode double-invokes updaters,
+    // which would toggle the pin twice and save the wrong state.
+    const nowPinned = !pinnedRef.current.has(id);
+    if (nowPinned) pinnedRef.current.add(id);
+    else pinnedRef.current.delete(id);
+    setNodes((ns) => {
+      const next = ns.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, pinned: nowPinned } } : n,
+      );
+      saveLayout(next); // pinning always persists immediately
+      return next;
+    });
+  }
+
+  // Restore the saved layout (positions + pins) when the graph first loads
   useEffect(() => {
-    if (graph) setNodes(graph.nodes);
+    if (!graph) return;
+    let saved: Record<string, { x: number; y: number; pinned: boolean }> = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}");
+    } catch {
+      saved = {};
+    }
+    pinnedRef.current = new Set(
+      Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
+    );
+    setNodes(
+      graph.nodes.map((n) => {
+        const s = saved[n.id];
+        return {
+          ...n,
+          position: s ? { x: s.x, y: s.y } : n.position,
+          data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
+        };
+      }),
+    );
   }, [graph, setNodes]);
 
   // Animation loop: run the force simulation until it settles
@@ -374,7 +610,8 @@ function Index() {
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      setNodes((ns) => forceStep(ns, simEdges, vels.current));
+      if (floatingRef.current)
+        setNodes((ns) => forceStep(ns, simEdges, vels.current, pinnedRef.current));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -464,6 +701,22 @@ function Index() {
             </ul>
           )}
         </div>
+        <button
+          onClick={() => {
+            saveLayout(nodes);
+            setSavedFlash(true);
+            setTimeout(() => setSavedFlash(false), 1500);
+          }}
+          className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
+        >
+          {savedFlash ? "Layout saved ✓" : "Save layout"}
+        </button>
+        <button
+          onClick={toggleFloating}
+          className="pointer-events-auto mt-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm transition-colors hover:bg-muted"
+        >
+          {floating ? "Disable floating" : "Enable floating"}
+        </button>
       </header>
       {(isLoading || !mounted) && (
         <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
