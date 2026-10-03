@@ -52,7 +52,7 @@ type Row = {
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
-type CardData = { item: Item; expanded?: boolean; relations?: string[] };
+type CardData = { item: Item; expanded?: boolean; relations?: string[] | undefined };
 
 const NODE_W = 260;
 const COL_GAP = 120;
