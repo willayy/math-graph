@@ -345,7 +345,7 @@ function clearEdgeCorridors(nodes: Node<CardData>[], edges: SimEdge[], pinned: S
           if (distance < 0.01) { nx = -vy; ny = vx; distance = Math.hypot(nx, ny) || 1; }
           nx /= distance; ny /= distance;
           const need = Math.abs(nx) * nodeWidth(node) / 2 + Math.abs(ny) * nodeHeight(node) / 2 + EDGE_BUFFER;
-          if (!best || distance - need < best.distance - best.need) best = { x: nx, y: ny, distance, need };
+          if (!best || distance < best.distance) best = { x: nx, y: ny, distance, need };
         }
         if (!best || best.distance >= best.need - 0.5) continue;
         const push = best.need - best.distance + 1;
@@ -1205,15 +1205,6 @@ function Index() {
         localStorage.setItem(STRONG_KEY, JSON.stringify(patch.strong_edges));
     }
   };
-  // Floating always starts enabled on each visit; the toggle lasts for the session.
-  const [floating, setFloating] = useState(true);
-  const floatingRef = useRef(floating);
-  const toggleFloating = () => {
-    const next = !floatingRef.current;
-    floatingRef.current = next;
-    setFloating(next);
-  };
-
   // Collections: named groups of nodes; optionally show only the active one
   const [collections, setCollections] = useState<Collection[]>([]);
   const [activeId, setActiveId] = useState<string>("");
@@ -1385,7 +1376,7 @@ function Index() {
     setTimeout(() => setNodes((ns) => (saveLayout(ns), ns)), 0); // persist once
   }
 
-  // Restore the saved layout (positions + pins) and floating setting
+  // Restore saved positions and pins; only unsaved layouts run the simulation.
   useEffect(() => {
     if (!graph || !authReady) return;
     let cancelled = false;
@@ -1437,9 +1428,9 @@ function Index() {
       pinnedRef.current = new Set(
         Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
       );
-      // A fresh visitor starts from the already-settled shared arrangement.
-      // Personal positions always win, including when only some nodes are saved.
-      initialLayoutRef.current = Object.keys(saved).length === 0 && graph.nodes.every((n) => defaultPositions[n.id]);
+      // Start new visitors close to the shared arrangement, then let the forces
+      // settle it once. Saved positions always take precedence and stay frozen.
+      initialLayoutRef.current = Object.keys(saved).length === 0;
        setNodes(clearEdgeCorridors(separateSetOutlines(
          graph.nodes.map((n) => {
           const s = saved[n.id];
@@ -1460,7 +1451,7 @@ function Index() {
 
   const saveLayoutRef = useRef(saveLayout);
   saveLayoutRef.current = saveLayout;
-  // Animation loop: run the force simulation until it settles
+  // Run physics once for unsaved layouts, then freeze and save the result.
   const simEdges = useMemo<SimEdge[]>(
     () => (graph ? graph.edges.map((e) => ({ source: e.source, target: e.target })) : []),
     [graph],
@@ -1476,30 +1467,27 @@ function Index() {
   useEffect(() => {
     if (!layoutVersion) return;
     let raf = 0;
-    let wasMoving = false;
-    // The bundled layout is already settled, so don't animate it into place.
-    // Dragging or expanding a card wakes the simulation again.
-    let alpha = initialLayoutRef.current ? 0 : 1;
-    reheatRef.current = () => { alpha = Math.max(alpha, 0.6); };
+    let alpha = initialLayoutRef.current ? 0.35 : 0;
+    let frames = 0;
+    let active = initialLayoutRef.current;
+    reheatRef.current = () => { active = true; frames = 0; alpha = Math.max(alpha, 0.6); };
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
-      if (floatingRef.current)
+      if (active)
         setNodes((ns) => {
           if (!ns.length) return ns;
-          if (ns.some((n) => n.dragging)) {
-            initialLayoutRef.current = false;
-            alpha = Math.max(alpha, 0.5);
-          }
           alpha *= ALPHA_DECAY;
           const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
-          const moving = next !== ns;
-          // Once the graph comes to rest, save that equilibrium so a refresh
-          // starts already settled.
-          if (wasMoving && !moving && ns.length && !ns.some((n) => n.dragging)) {
+          frames++;
+          // Stop after the forces cool, even if a dense cluster cannot reach
+          // a perfect equilibrium. Manual drags do not wake the simulation.
+          if ((next === ns || frames >= 180) && !ns.some((n) => n.dragging)) {
+            active = false;
+            initialLayoutRef.current = false;
+            vels.current.clear();
             clearTimeout(saveTimer);
-            saveTimer = setTimeout(() => saveLayoutRef.current(ns), 0);
+            saveTimer = setTimeout(() => saveLayoutRef.current(next), 0);
           }
-          wasMoving = moving;
           return next;
         });
       raf = requestAnimationFrame(tick);
@@ -1513,7 +1501,6 @@ function Index() {
   }, [setNodes, simEdges, simGroups, layoutVersion]);
 
   const toggleExpand = (id: string) => {
-    initialLayoutRef.current = false;
     reheatRef.current();
     setNodes((ns) =>
       ns.map((n) =>
@@ -1637,10 +1624,21 @@ function Index() {
             {savedFlash ? "Layout saved ✓" : "Save layout"}
           </button>
           <button
-            onClick={toggleFloating}
+            onClick={() => {
+              if (!graph) return;
+              pinnedRef.current.clear();
+              vels.current.clear();
+              initialLayoutRef.current = true;
+              setNodes(graph.nodes.map((n) => ({
+                ...n,
+                position: defaultPositions[n.id] ?? n.position,
+                data: { ...n.data, pinned: false, onTogglePin: togglePin },
+              })));
+              setLayoutVersion((v) => v + 1);
+            }}
             className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
           >
-            {floating ? "Disable floating" : "Enable floating"}
+            Reset positions
           </button>
           <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm hover:bg-muted">
             <input type="checkbox" checked={canonicalOnly} onChange={(e) => setCanonicalOnly(e.target.checked)} className="accent-foreground" />
