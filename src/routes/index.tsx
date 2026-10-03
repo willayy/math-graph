@@ -1235,7 +1235,10 @@ function Index() {
       if (floatingRef.current)
         setNodes((ns) => {
           if (!ns.length) return ns;
-          if (ns.some((n) => n.dragging)) alpha = Math.max(alpha, 0.5);
+          if (ns.some((n) => n.dragging)) {
+            initialLayoutRef.current = false;
+            alpha = Math.max(alpha, 0.5);
+          }
           alpha *= ALPHA_DECAY;
           const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
           const moving = next !== ns;
