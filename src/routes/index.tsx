@@ -313,6 +313,109 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
 
 const edgeTypes = { floating: FloatingEdge };
 
+// Collections dropdown: a button that opens a panel listing every collection
+// (with its size and a checkmark on the active one) plus the actions that used
+// to be separate buttons — new, show-only, delete.
+function CollectionsMenu(props: {
+  collections: Collection[];
+  activeId: string;
+  activeName?: string;
+  showOnly: boolean;
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  onSelect: (id: string) => void;
+  onToggleShowOnly: () => void;
+  onNew: () => void;
+  onDelete: () => void;
+}) {
+  const { open, setOpen, collections, activeId, activeName, showOnly } = props;
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+      >
+        <span className="truncate">{activeName ?? "Collections"}</span>
+        <svg
+          className={`pointer-events-none h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-full min-w-52 overflow-hidden rounded-md border border-border bg-background shadow-md">
+          <p className="border-b border-border px-3 pb-1.5 pt-2.5 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Collections
+          </p>
+          <div className="max-h-48 overflow-y-auto py-1">
+            <button
+              onClick={() => props.onSelect("")}
+              className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-muted"
+            >
+              <span className={activeId ? "text-muted-foreground" : "font-medium"}>No collection</span>
+              {!activeId && <CheckIcon />}
+            </button>
+            {collections.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => props.onSelect(c.id)}
+                className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
+              >
+                <span className={`truncate ${c.id === activeId ? "font-medium" : ""}`}>{c.name}</span>
+                <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                  {c.ids.length}
+                  {c.id === activeId && <CheckIcon />}
+                </span>
+              </button>
+            ))}
+            {collections.length === 0 && (
+              <p className="px-3 py-1.5 text-xs text-muted-foreground">No collections yet.</p>
+            )}
+          </div>
+          <div className="border-t border-border py-1">
+            <button
+              onClick={props.onNew}
+              className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+            >
+              + New collection
+            </button>
+            {activeId && (
+              <>
+                <button
+                  onClick={props.onToggleShowOnly}
+                  className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+                >
+                  {showOnly ? "Show all nodes" : "Show only this collection"}
+                </button>
+                <button
+                  onClick={props.onDelete}
+                  className="w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted"
+                >
+                  Delete collection
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 // Arrowheads per relation: open chevron = used by, filled square (QED) = proved
 // by, hollow circle = has lemma. auto-start-reverse lets them serve as start heads.
 function EdgeMarkers() {
@@ -830,6 +933,7 @@ function Index() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [showOnly, setShowOnly] = useState(false);
+  const [collOpen, setCollOpen] = useState(false);
   const active = collections.find((c) => c.id === activeId) ?? null;
   const updateCollections = (next: Collection[]) => {
     setCollections(next);
