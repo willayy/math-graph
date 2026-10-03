@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       axioms: {
         Row: {
+          citation: string | null
           created_at: string
           creator: string | null
           date: string | null
@@ -24,6 +25,7 @@ export type Database = {
           statement: string
         }
         Insert: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -32,6 +34,7 @@ export type Database = {
           statement: string
         }
         Update: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -43,6 +46,7 @@ export type Database = {
       }
       conjectures: {
         Row: {
+          citation: string | null
           created_at: string
           creator: string | null
           date: string | null
@@ -51,6 +55,7 @@ export type Database = {
           statement: string
         }
         Insert: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -59,6 +64,7 @@ export type Database = {
           statement: string
         }
         Update: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -70,6 +76,7 @@ export type Database = {
       }
       definitions: {
         Row: {
+          citation: string | null
           created_at: string
           creator: string | null
           date: string | null
@@ -78,6 +85,7 @@ export type Database = {
           statement: string
         }
         Insert: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -86,6 +94,7 @@ export type Database = {
           statement: string
         }
         Update: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -97,6 +106,7 @@ export type Database = {
       }
       lemmas: {
         Row: {
+          citation: string | null
           created_at: string
           creator: string | null
           date: string | null
@@ -106,6 +116,7 @@ export type Database = {
           theorem_id: string
         }
         Insert: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -115,6 +126,7 @@ export type Database = {
           theorem_id: string
         }
         Update: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -135,6 +147,7 @@ export type Database = {
       }
       proofs: {
         Row: {
+          citation: string | null
           created_at: string
           creator: string | null
           date: string | null
@@ -144,6 +157,7 @@ export type Database = {
           theorem_id: string
         }
         Insert: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -153,6 +167,7 @@ export type Database = {
           theorem_id: string
         }
         Update: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -202,6 +217,7 @@ export type Database = {
       }
       sets: {
         Row: {
+          citation: string | null
           created_at: string
           creator: string | null
           date: string | null
@@ -210,6 +226,7 @@ export type Database = {
           name: string
         }
         Insert: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -218,6 +235,7 @@ export type Database = {
           name: string
         }
         Update: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -258,6 +276,7 @@ export type Database = {
       }
       theorems: {
         Row: {
+          citation: string | null
           created_at: string
           creator: string | null
           date: string | null
@@ -266,6 +285,7 @@ export type Database = {
           statement: string
         }
         Insert: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null
@@ -274,6 +294,7 @@ export type Database = {
           statement: string
         }
         Update: {
+          citation?: string | null
           created_at?: string
           creator?: string | null
           date?: string | null

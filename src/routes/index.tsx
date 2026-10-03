@@ -44,6 +44,7 @@ type Row = {
   name: string;
   creator: string | null;
   statement: string;
+  citation: string | null;
   theorem_id?: string;
 };
 type Item = Row & { kind: Kind };
@@ -52,7 +53,7 @@ type CardData = { item: Item };
 const NODE_W = 260;
 const COL_GAP = 120;
 const ROW_GAP = 40;
-const NODE_H = 130;
+const NODE_H = 155;
 
 async function fetchGraph() {
   const tables = [
@@ -98,6 +99,11 @@ function Card({ data }: NodeProps<Node<CardData>>) {
       <p className="mt-1 line-clamp-3 text-xs leading-snug text-foreground/75">
         {item.statement}
       </p>
+      {item.citation && (
+        <p className="mt-1.5 line-clamp-1 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground">
+          {item.citation}
+        </p>
+      )}
       <Handle type="source" position={Position.Right} className="!bg-foreground" />
     </div>
   );
@@ -136,6 +142,42 @@ function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }
     const d = depth.get(i.id)!;
     cols.set(d, [...(cols.get(d) ?? []), i]);
   }
+
+  // Adjacency across adjacent columns (both directions) for crossing reduction
+  const neighbors = new Map<string, string[]>();
+  const link = (a: string, b: string) => {
+    neighbors.set(a, [...(neighbors.get(a) ?? []), b]);
+    neighbors.set(b, [...(neighbors.get(b) ?? []), a]);
+  };
+  for (const [t, ds] of deps) for (const d of ds) link(d, t);
+  for (const i of items)
+    if ((i.kind === "lemma" || i.kind === "proof") && i.theorem_id && byId.has(i.theorem_id))
+      link(i.theorem_id, i.id);
+
+  // Barycenter ordering: repeatedly sort each column by the average position
+  // of its neighbors in adjacent columns to minimize edge crossings.
+  const colKeys = [...cols.keys()].sort((a, b) => a - b);
+  const posOf = new Map<string, number>();
+  const reindex = () => {
+    for (const k of colKeys) cols.get(k)!.forEach((it, idx) => posOf.set(it.id, idx));
+  };
+  reindex();
+  for (let pass = 0; pass < 8; pass++) {
+    const forward = pass % 2 === 0;
+    const keys = forward ? colKeys : [...colKeys].reverse();
+    for (const k of keys) {
+      const list = cols.get(k)!;
+      const bary = (it: Item) => {
+        const ns = (neighbors.get(it.id) ?? [])
+          .map((n) => posOf.get(n))
+          .filter((p): p is number => p !== undefined);
+        return ns.length ? ns.reduce((a, b) => a + b, 0) / ns.length : posOf.get(it.id)!;
+      };
+      list.sort((a, b) => bary(a) - bary(b));
+    }
+    reindex();
+  }
+
   const nodes: Node<CardData>[] = [];
   for (const [d, list] of cols) {
     const total = list.length * (NODE_H + ROW_GAP);
@@ -153,7 +195,7 @@ function buildGraph(items: Item[], uses: { theorem_id: string; used_id: string }
     id: `${source}-${target}`,
     source,
     target,
-    type: "smoothstep",
+    type: "default", // bezier curve — bends around boxes instead of cutting through
     markerEnd: { type: MarkerType.ArrowClosed, color: "currentColor" },
     style: { stroke: "var(--foreground)", strokeWidth: 1.25, strokeDasharray: dashed ? "4 4" : undefined },
   });
