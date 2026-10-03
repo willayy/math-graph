@@ -788,6 +788,20 @@ function Index() {
         >
           {floating ? "Disable floating" : "Enable floating"}
         </button>
+        <div className="pointer-events-auto mt-2 text-xs text-muted-foreground">
+          {userId ? (
+            <span>
+              Signed in as {email} — your layout is saved to your account.{" "}
+              <button onClick={() => supabase.auth.signOut()} className="underline">
+                Sign out
+              </button>
+            </span>
+          ) : (
+            <span>
+              <Link to="/auth" className="underline">Sign in</Link> to keep your layout on any device.
+            </span>
+          )}
+        </div>
       </header>
       {(isLoading || !mounted) && (
         <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
