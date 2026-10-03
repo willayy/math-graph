@@ -355,8 +355,9 @@ function Index() {
       )}
       {mounted && graph && (
         <ReactFlow
-          nodes={graph.nodes}
+          nodes={nodes}
           edges={graph.edges}
+          onNodesChange={onNodesChange}
           nodeTypes={nodeTypes}
           onInit={setFlow}
           fitView
