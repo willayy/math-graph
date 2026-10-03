@@ -257,6 +257,63 @@ function Card({ data }: NodeProps<Node<CardData>>) {
 
 const nodeTypes = { card: Card };
 
+// Floating edge: the connection points are recomputed from the nodes' current
+// rectangles on every render, so each line leaves the box on the side facing
+// the other box (and arrowheads stay glued to the boxes, never mid-bend).
+function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style }: EdgeProps) {
+  const sn = useInternalNode(source);
+  const tn = useInternalNode(target);
+  if (!sn || !tn) return null;
+  const w = (n: typeof sn | typeof tn) => n.measured?.width ?? NODE_W;
+  const h = (n: typeof sn | typeof tn) => n.measured?.height ?? NODE_H;
+  const sc = { x: sn.internals.positionAbsolute.x + w(sn) / 2, y: sn.internals.positionAbsolute.y + h(sn) / 2 };
+  const tc = { x: tn.internals.positionAbsolute.x + w(tn) / 2, y: tn.internals.positionAbsolute.y + h(tn) / 2 };
+  const dx = tc.x - sc.x;
+  const dy = tc.y - sc.y;
+  // Point where the ray from a box center toward the other exits its rectangle
+  const bound = (cx: number, cy: number, bw: number, bh: number, vx: number, vy: number) => {
+    if (vx === 0 && vy === 0) return { x: cx, y: cy };
+    const s = Math.min(vx === 0 ? Infinity : bw / 2 / Math.abs(vx), vy === 0 ? Infinity : bh / 2 / Math.abs(vy));
+    return { x: cx + vx * s, y: cy + vy * s };
+  };
+  const p1 = bound(sc.x, sc.y, w(sn), h(sn), dx, dy);
+  const p2 = bound(tc.x, tc.y, w(tn), h(tn), -dx, -dy);
+  // Bezier control direction follows the dominant axis so the curve starts flat
+  const horiz = Math.abs(dx) >= Math.abs(dy);
+  const [path, labelX, labelY] = getBezierPath({
+    sourceX: p1.x,
+    sourceY: p1.y,
+    sourcePosition: horiz ? (dx >= 0 ? Position.Right : Position.Left) : dy >= 0 ? Position.Bottom : Position.Top,
+    targetX: p2.x,
+    targetY: p2.y,
+    targetPosition: horiz ? (dx >= 0 ? Position.Left : Position.Right) : dy >= 0 ? Position.Top : Position.Bottom,
+  });
+  const text = typeof label === "string" ? label : undefined;
+  const tw = text ? text.length * 6 + 10 : 0;
+  return (
+    <g>
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} markerStart={markerStart} style={style} />
+      {text && (
+        <>
+          <rect
+            className="react-flow__edge-textbg"
+            x={labelX - tw / 2}
+            y={labelY - 8}
+            width={tw}
+            height={16}
+            rx={3}
+          />
+          <text className="react-flow__edge-text" x={labelX} y={labelY} textAnchor="middle" dominantBaseline="central">
+            {text}
+          </text>
+        </>
+      )}
+    </g>
+  );
+}
+
+const edgeTypes = { floating: FloatingEdge };
+
 function buildGraph(
   items: Item[],
   uses: { theorem_id: string; used_id: string }[],
