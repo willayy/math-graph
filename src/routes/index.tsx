@@ -572,7 +572,6 @@ function forceStep(
 }
 
 const LAYOUT_KEY = "mathgraph-layout-v1";
-const FLOATING_KEY = "mathgraph-floating";
 const COLLECTIONS_KEY = "mathgraph-collections";
 
 function Index() {
@@ -607,7 +606,7 @@ function Index() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-  const persist = (patch: { layout?: unknown; floating?: boolean; collections?: Collection[] }) => {
+  const persist = (patch: { layout?: unknown; collections?: Collection[] }) => {
     const uid = userIdRef.current;
     if (uid) {
       void supabase
@@ -615,18 +614,17 @@ function Index() {
         .upsert({ user_id: uid, ...patch, updated_at: new Date().toISOString() } as never);
     } else {
       if (patch.layout !== undefined) localStorage.setItem(LAYOUT_KEY, JSON.stringify(patch.layout));
-      if (patch.floating !== undefined) localStorage.setItem(FLOATING_KEY, patch.floating ? "on" : "off");
       if (patch.collections !== undefined)
         localStorage.setItem(COLLECTIONS_KEY, JSON.stringify(patch.collections));
     }
   };
+  // Floating always starts enabled on each visit; the toggle lasts for the session.
   const [floating, setFloating] = useState(true);
   const floatingRef = useRef(floating);
   const toggleFloating = () => {
     const next = !floatingRef.current;
     floatingRef.current = next;
     setFloating(next);
-    persist({ floating: next });
   };
 
   // Collections: named groups of nodes; optionally show only the active one
