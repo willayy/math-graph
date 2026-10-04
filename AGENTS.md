@@ -14,3 +14,4 @@
 - Graph layout uses measured dimensions; physics settles unsaved or reset positions once, then freezes until expansion or measurement needs clearance. Why: preserve deliberate manual placement while preventing overlaps.
 - New visitors start from a bundled settled position snapshot, while personal saved positions take priority. Why: the graph should appear composed immediately without replacing account layouts.
 - Set outlines derive from current node boxes and membership, while distant zoom shows only set labels. Why: grouping stays aligned with dragged and expanded nodes without changing saved layouts.
+- Initial graph settling evaluates rendered Bezier crossings and repeatedly separates set hulls before saving, while saved account layouts remain authoritative. Why: prevent tangled defaults without overwriting deliberate personal positions.
