@@ -1694,7 +1694,10 @@ function Index() {
             initialLayoutRef.current = false;
             vels.current.clear();
             clearTimeout(saveTimer);
-            saveTimer = setTimeout(() => saveLayoutRef.current(next), 0);
+             saveTimer = setTimeout(() => {
+               saveLayoutRef.current(next);
+               fitFlowRef.current();
+             }, 0);
           }
           return next;
         });
