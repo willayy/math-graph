@@ -1034,7 +1034,7 @@ const GRAVITY = 0.0012;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
-const UNTANGLE = 4; // gentle push between crossing edges
+const UNTANGLE = 28; // prioritize uncrossing actual curved paths during settling
 const SET_PULL = 0.00242; // pull toward the centre of each set the box belongs to
 const KIND_PULL = 0.00088; // weaker pull toward the centre of the box's kind
 const INTERSET_REPULSION = 0.95; // slightly less push between boxes in different sets
@@ -1158,8 +1158,9 @@ function forceStep(
     });
   }
 
-  // Untangle: any two crossing edges push their endpoints apart along the
-  // line between their midpoints, so the layout works toward planarity.
+  // Untangle the same sampled Bezier curves that are drawn on screen. Move the
+  // endpoint nearest a crossing across the other curve rather than translating
+  // both edges along their nearly coincident midpoints.
   for (let i = 0; i < edges.length; i++) {
     for (let j = i + 1; j < edges.length; j++) {
       const e1 = edges[i]!;
@@ -1174,25 +1175,31 @@ function forceStep(
       const c = idx.get(e2.source);
       const d = idx.get(e2.target);
       if (a === undefined || b === undefined || c === undefined || d === undefined) continue;
-      const na = nodes[a]!;
-      const nb = nodes[b]!;
-      const nc = nodes[c]!;
-      const nd = nodes[d]!;
-      if (!segmentsCross(cx(na), cy(na), cx(nb), cy(nb), cx(nc), cy(nc), cx(nd), cy(nd)))
-        continue;
-      let ux = (cx(na) + cx(nb)) / 2 - (cx(nc) + cx(nd)) / 2;
-      let uy = (cy(na) + cy(nb)) / 2 - (cy(nc) + cy(nd)) / 2;
-      const len = Math.hypot(ux, uy) || 1;
-      ux /= len;
-      uy /= len;
-      fx[a]! += ux * UNTANGLE;
-      fy[a]! += uy * UNTANGLE;
-      fx[b]! += ux * UNTANGLE;
-      fy[b]! += uy * UNTANGLE;
-      fx[c]! -= ux * UNTANGLE;
-      fy[c]! -= uy * UNTANGLE;
-      fx[d]! -= ux * UNTANGLE;
-      fy[d]! -= uy * UNTANGLE;
+      const first = edgePoints(nodes[a]!, nodes[b]!);
+      const second = edgePoints(nodes[c]!, nodes[d]!);
+      let crossing: { x: number; y: number; nx: number; ny: number } | null = null;
+      for (let u = 1; u < first.length && !crossing; u++) for (let v = 1; v < second.length; v++) {
+        const p = first[u - 1]!, q = first[u]!;
+        const r = second[v - 1]!, s = second[v]!;
+        if (!segmentsCross(p.x, p.y, q.x, q.y, r.x, r.y, s.x, s.y)) continue;
+        const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+        crossing = { x: (p.x + q.x + r.x + s.x) / 4, y: (p.y + q.y + r.y + s.y) / 4,
+          nx: -(q.y - p.y) / length, ny: (q.x - p.x) / length };
+        break;
+      }
+      if (!crossing) continue;
+      const { x, y, nx, ny } = crossing;
+      // Push the closer free endpoint across the first path, with the other
+      // endpoint following weakly to avoid sharply bending the connecting edge.
+      const choice = [c, d].filter((k) => !pinned.has(nodes[k]!.id) && !nodes[k]!.dragging)
+        .sort((left, right) => Math.hypot(cx(nodes[left]!) - x, cy(nodes[left]!) - y)
+          - Math.hypot(cx(nodes[right]!) - x, cy(nodes[right]!) - y))[0];
+      if (choice !== undefined) {
+        const signed = (cx(nodes[choice]!) - x) * nx + (cy(nodes[choice]!) - y) * ny;
+        const direction = signed >= 0 ? 1 : -1;
+        fx[choice]! += nx * direction * UNTANGLE;
+        fy[choice]! += ny * direction * UNTANGLE;
+      }
     }
   }
 
@@ -1618,11 +1625,12 @@ function Index() {
         setNodes((ns) => {
           if (!ns.length) return ns;
           alpha *= ALPHA_DECAY;
-          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
+          let next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
+          if (data?.setElements.length) next = separateSetOutlines(next, data.setElements, pinnedRef.current);
           frames++;
           // Stop after the forces cool, even if a dense cluster cannot reach
           // a perfect equilibrium. Manual drags do not wake the simulation.
-          if ((next === ns || frames >= 180) && !ns.some((n) => n.dragging)) {
+           if ((next === ns || frames >= 240) && !ns.some((n) => n.dragging)) {
             active = false;
             initialLayoutRef.current = false;
             vels.current.clear();
@@ -1639,7 +1647,7 @@ function Index() {
       clearTimeout(saveTimer);
       reheatRef.current = () => {};
     };
-  }, [setNodes, simEdges, simGroups, layoutVersion]);
+  }, [setNodes, simEdges, simGroups, data, layoutVersion]);
 
   const toggleExpand = (id: string) => {
     reheatRef.current();
