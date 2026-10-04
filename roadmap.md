@@ -57,3 +57,5 @@
 - [x] Add a reset positions button
 - [x] Grouped menu bar top-right: View / Submissions / Pages (Change history, About) / Collections, one panel open at a time
 - [x] Menu bar scales with window size
+- [ ] Improve initial settling so rendered edges do not cross and set outlines stay separate
+- [ ] Move graph filters into their own tab in the top menu
