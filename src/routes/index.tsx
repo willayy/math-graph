@@ -1057,6 +1057,60 @@ function segmentsCross(
   return o1 * o2 < 0 && o3 * o4 < 0;
 }
 
+// A discrete finishing pass can untangle crossings that gentle forces cannot
+// escape: swapping two same-set cards changes their ordering without scattering
+// the collection. Score the drawn curves, not straight lines between centres.
+function crossingScore(nodes: Node<CardData>[], edges: SimEdge[]) {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const paths = edges.map((edge) => {
+    const source = byId.get(edge.source), target = byId.get(edge.target);
+    return source && target ? edgePoints(source, target) : [];
+  });
+  let score = 0;
+  for (let i = 0; i < edges.length; i++) for (let j = i + 1; j < edges.length; j++) {
+    const a = edges[i]!, b = edges[j]!;
+    if (a.source === b.source || a.source === b.target || a.target === b.source || a.target === b.target) continue;
+    const first = paths[i]!, second = paths[j]!;
+    let crosses = false;
+    for (let u = 1; u < first.length && !crosses; u++) for (let v = 1; v < second.length; v++) {
+      const p = first[u - 1]!, q = first[u]!, r = second[v - 1]!, s = second[v]!;
+      if (segmentsCross(p.x, p.y, q.x, q.y, r.x, r.y, s.x, s.y)) { crosses = true; break; }
+    }
+    if (crosses) score++;
+  }
+  for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+    const a = nodes[i]!, b = nodes[j]!;
+    const overlapX = Math.min(a.position.x + nodeWidth(a), b.position.x + nodeWidth(b)) - Math.max(a.position.x, b.position.x);
+    const overlapY = Math.min(a.position.y + nodeHeight(a), b.position.y + nodeHeight(b)) - Math.max(a.position.y, b.position.y);
+    if (overlapX > 0 && overlapY > 0) score += 5;
+  }
+  return score;
+}
+
+function polishCrossings(nodes: Node<CardData>[], edges: SimEdge[], groups: Map<string, { kind: string; sets: string[] }>, pinned: Set<string>) {
+  let result = nodes;
+  let best = crossingScore(result, edges);
+  const linked = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+  for (let pass = 0; pass < 8 && best > 0; pass++) {
+    let candidate: Node<CardData>[] | null = null;
+    for (let i = 0; i < result.length; i++) for (let j = i + 1; j < result.length; j++) {
+      const a = result[i]!, b = result[j]!;
+      if (!linked.has(a.id) && !linked.has(b.id)) continue;
+      if (pinned.has(a.id) || pinned.has(b.id) || a.dragging || b.dragging) continue;
+      const aSets = groups.get(a.id)?.sets ?? [], bSets = groups.get(b.id)?.sets ?? [];
+      if (!aSets.length || !aSets.some((set) => bSets.includes(set))) continue;
+      const trial = [...result];
+      trial[i] = { ...a, position: b.position };
+      trial[j] = { ...b, position: a.position };
+      const score = crossingScore(trial, edges);
+      if (score < best) { best = score; candidate = trial; }
+    }
+    if (!candidate) break;
+    result = candidate;
+  }
+  return result;
+}
+
 function forceStep(
   nodes: Node<CardData>[],
   edges: SimEdge[],
@@ -1631,6 +1685,11 @@ function Index() {
           // Stop after the forces cool, even if a dense cluster cannot reach
           // a perfect equilibrium. Manual drags do not wake the simulation.
            if ((next === ns || frames >= 240) && !ns.some((n) => n.dragging)) {
+             if (initialLayoutRef.current) {
+               next = polishCrossings(next, simEdges, simGroups, pinnedRef.current);
+               if (data?.setElements.length) next = separateSetOutlines(next, data.setElements, pinnedRef.current);
+               next = clearEdgeCorridors(next, simEdges, pinnedRef.current);
+             }
             active = false;
             initialLayoutRef.current = false;
             vels.current.clear();
