@@ -681,6 +681,43 @@ function ViewMenu(props: {
   );
 }
 
+function FiltersMenu(props: {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  sets: { id: string; name: string }[];
+  filterSet: string;
+  setFilterSet: (value: string) => void;
+  filterKind: string;
+  setFilterKind: (value: string) => void;
+}) {
+  return (
+    <div className="relative flex flex-1">
+      <button onClick={() => props.setOpen(!props.open)} className={segmentBtn} aria-expanded={props.open}>
+        Filters <Chevron open={props.open} />
+      </button>
+      {props.open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => props.setOpen(false)} />
+          <div className="absolute right-0 top-full z-20 mt-1 w-60 space-y-2 rounded-md border border-border bg-background p-3 shadow-md">
+            <label htmlFor="set-filter" className="block text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
+            <select id="set-filter" value={props.filterSet} onChange={(e) => props.setFilterSet(e.target.value)} className="w-full bg-background text-xs text-foreground outline-none">
+              <option value="">All sets</option>
+              {props.sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
+            </select>
+            <label htmlFor="kind-filter" className="block text-[10px] font-semibold uppercase text-muted-foreground">Node type</label>
+            <select id="kind-filter" value={props.filterKind} onChange={(e) => props.setFilterKind(e.target.value)} className="w-full bg-background text-xs text-foreground outline-none">
+              <option value="">All types</option>
+              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map((kind) => (
+                <option key={kind} value={kind}>{kind.replace(/^./, (letter) => letter.toUpperCase())}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Pages dropdown: links to the change history and about pages.
 function PagesMenu({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   return (
@@ -997,7 +1034,7 @@ const GRAVITY = 0.0012;
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
-const UNTANGLE = 4; // gentle push between crossing edges
+const UNTANGLE = 28; // prioritize uncrossing actual curved paths during settling
 const SET_PULL = 0.00242; // pull toward the centre of each set the box belongs to
 const KIND_PULL = 0.00088; // weaker pull toward the centre of the box's kind
 const INTERSET_REPULSION = 0.95; // slightly less push between boxes in different sets
@@ -1018,6 +1055,60 @@ function segmentsCross(
   const o3 = orient(cx2, cy2, dx, dy, ax, ay);
   const o4 = orient(cx2, cy2, dx, dy, bx, by);
   return o1 * o2 < 0 && o3 * o4 < 0;
+}
+
+// A discrete finishing pass can untangle crossings that gentle forces cannot
+// escape: swapping two same-set cards changes their ordering without scattering
+// the collection. Score the drawn curves, not straight lines between centres.
+function crossingScore(nodes: Node<CardData>[], edges: SimEdge[]) {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const paths = edges.map((edge) => {
+    const source = byId.get(edge.source), target = byId.get(edge.target);
+    return source && target ? edgePoints(source, target) : [];
+  });
+  let score = 0;
+  for (let i = 0; i < edges.length; i++) for (let j = i + 1; j < edges.length; j++) {
+    const a = edges[i]!, b = edges[j]!;
+    if (a.source === b.source || a.source === b.target || a.target === b.source || a.target === b.target) continue;
+    const first = paths[i]!, second = paths[j]!;
+    let crosses = false;
+    for (let u = 1; u < first.length && !crosses; u++) for (let v = 1; v < second.length; v++) {
+      const p = first[u - 1]!, q = first[u]!, r = second[v - 1]!, s = second[v]!;
+      if (segmentsCross(p.x, p.y, q.x, q.y, r.x, r.y, s.x, s.y)) { crosses = true; break; }
+    }
+    if (crosses) score++;
+  }
+  for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+    const a = nodes[i]!, b = nodes[j]!;
+    const overlapX = Math.min(a.position.x + nodeWidth(a), b.position.x + nodeWidth(b)) - Math.max(a.position.x, b.position.x);
+    const overlapY = Math.min(a.position.y + nodeHeight(a), b.position.y + nodeHeight(b)) - Math.max(a.position.y, b.position.y);
+    if (overlapX > 0 && overlapY > 0) score += 5;
+  }
+  return score;
+}
+
+function polishCrossings(nodes: Node<CardData>[], edges: SimEdge[], groups: Map<string, { kind: string; sets: string[] }>, pinned: Set<string>) {
+  let result = nodes;
+  let best = crossingScore(result, edges);
+  const linked = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+  for (let pass = 0; pass < 8 && best > 0; pass++) {
+    let candidate: Node<CardData>[] | null = null;
+    for (let i = 0; i < result.length; i++) for (let j = i + 1; j < result.length; j++) {
+      const a = result[i]!, b = result[j]!;
+      if (!linked.has(a.id) && !linked.has(b.id)) continue;
+      if (pinned.has(a.id) || pinned.has(b.id) || a.dragging || b.dragging) continue;
+      const aSets = groups.get(a.id)?.sets ?? [], bSets = groups.get(b.id)?.sets ?? [];
+      if (!aSets.length || !aSets.some((set) => bSets.includes(set))) continue;
+      const trial = [...result];
+      trial[i] = { ...a, position: b.position };
+      trial[j] = { ...b, position: a.position };
+      const score = crossingScore(trial, edges);
+      if (score < best) { best = score; candidate = trial; }
+    }
+    if (!candidate) break;
+    result = candidate;
+  }
+  return result;
 }
 
 function forceStep(
@@ -1121,8 +1212,9 @@ function forceStep(
     });
   }
 
-  // Untangle: any two crossing edges push their endpoints apart along the
-  // line between their midpoints, so the layout works toward planarity.
+  // Untangle the same sampled Bezier curves that are drawn on screen. Move the
+  // endpoint nearest a crossing across the other curve rather than translating
+  // both edges along their nearly coincident midpoints.
   for (let i = 0; i < edges.length; i++) {
     for (let j = i + 1; j < edges.length; j++) {
       const e1 = edges[i]!;
@@ -1137,25 +1229,31 @@ function forceStep(
       const c = idx.get(e2.source);
       const d = idx.get(e2.target);
       if (a === undefined || b === undefined || c === undefined || d === undefined) continue;
-      const na = nodes[a]!;
-      const nb = nodes[b]!;
-      const nc = nodes[c]!;
-      const nd = nodes[d]!;
-      if (!segmentsCross(cx(na), cy(na), cx(nb), cy(nb), cx(nc), cy(nc), cx(nd), cy(nd)))
-        continue;
-      let ux = (cx(na) + cx(nb)) / 2 - (cx(nc) + cx(nd)) / 2;
-      let uy = (cy(na) + cy(nb)) / 2 - (cy(nc) + cy(nd)) / 2;
-      const len = Math.hypot(ux, uy) || 1;
-      ux /= len;
-      uy /= len;
-      fx[a]! += ux * UNTANGLE;
-      fy[a]! += uy * UNTANGLE;
-      fx[b]! += ux * UNTANGLE;
-      fy[b]! += uy * UNTANGLE;
-      fx[c]! -= ux * UNTANGLE;
-      fy[c]! -= uy * UNTANGLE;
-      fx[d]! -= ux * UNTANGLE;
-      fy[d]! -= uy * UNTANGLE;
+      const first = edgePoints(nodes[a]!, nodes[b]!);
+      const second = edgePoints(nodes[c]!, nodes[d]!);
+      let crossing: { x: number; y: number; nx: number; ny: number } | null = null;
+      for (let u = 1; u < first.length && !crossing; u++) for (let v = 1; v < second.length; v++) {
+        const p = first[u - 1]!, q = first[u]!;
+        const r = second[v - 1]!, s = second[v]!;
+        if (!segmentsCross(p.x, p.y, q.x, q.y, r.x, r.y, s.x, s.y)) continue;
+        const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+        crossing = { x: (p.x + q.x + r.x + s.x) / 4, y: (p.y + q.y + r.y + s.y) / 4,
+          nx: -(q.y - p.y) / length, ny: (q.x - p.x) / length };
+        break;
+      }
+      if (!crossing) continue;
+      const { x, y, nx, ny } = crossing;
+      // Push the closer free endpoint across the first path, with the other
+      // endpoint following weakly to avoid sharply bending the connecting edge.
+      const choice = [c, d].filter((k) => !pinned.has(nodes[k]!.id) && !nodes[k]!.dragging)
+        .sort((left, right) => Math.hypot(cx(nodes[left]!) - x, cy(nodes[left]!) - y)
+          - Math.hypot(cx(nodes[right]!) - x, cy(nodes[right]!) - y))[0];
+      if (choice !== undefined) {
+        const signed = (cx(nodes[choice]!) - x) * nx + (cy(nodes[choice]!) - y) * ny;
+        const direction = signed >= 0 ? 1 : -1;
+        fx[choice]! += nx * direction * UNTANGLE;
+        fy[choice]! += ny * direction * UNTANGLE;
+      }
     }
   }
 
@@ -1311,6 +1409,7 @@ function Index() {
   const [showOnly, setShowOnly] = useState(false);
   const [collOpen, setCollOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [pagesOpen, setPagesOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
   const active = collections.find((c) => c.id === activeId) ?? null;
@@ -1580,16 +1679,25 @@ function Index() {
         setNodes((ns) => {
           if (!ns.length) return ns;
           alpha *= ALPHA_DECAY;
-          const next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
+          let next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
+          if (data?.setElements.length) next = separateSetOutlines(next, data.setElements, pinnedRef.current);
           frames++;
           // Stop after the forces cool, even if a dense cluster cannot reach
           // a perfect equilibrium. Manual drags do not wake the simulation.
-          if ((next === ns || frames >= 180) && !ns.some((n) => n.dragging)) {
+           if ((next === ns || frames >= 240) && !ns.some((n) => n.dragging)) {
+             if (initialLayoutRef.current) {
+               next = polishCrossings(next, simEdges, simGroups, pinnedRef.current);
+               if (data?.setElements.length) next = separateSetOutlines(next, data.setElements, pinnedRef.current);
+               next = clearEdgeCorridors(next, simEdges, pinnedRef.current);
+             }
             active = false;
             initialLayoutRef.current = false;
             vels.current.clear();
             clearTimeout(saveTimer);
-            saveTimer = setTimeout(() => saveLayoutRef.current(next), 0);
+             saveTimer = setTimeout(() => {
+               saveLayoutRef.current(next);
+               fitFlowRef.current();
+             }, 0);
           }
           return next;
         });
@@ -1601,7 +1709,7 @@ function Index() {
       clearTimeout(saveTimer);
       reheatRef.current = () => {};
     };
-  }, [setNodes, simEdges, simGroups, layoutVersion]);
+  }, [setNodes, simEdges, simGroups, data, layoutVersion]);
 
   const toggleExpand = (id: string) => {
     reheatRef.current();
@@ -1615,11 +1723,15 @@ function Index() {
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   const clickedNodeRef = useRef(false);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fitFlowRef = useRef<() => void>(() => {});
+  fitFlowRef.current = () => {
+    if (!clickedNodeRef.current) void flow?.fitView({ padding: 0.2, duration: 800, includeHiddenNodes: true });
+  };
   // Re-fit the view once, after the initial layout has had time to settle
   useEffect(() => {
     if (!flow || !graph || !layoutVersion) return;
     const t = setTimeout(() => {
-      if (!clickedNodeRef.current) void flow.fitView({ padding: 0.2, duration: 800, includeHiddenNodes: true });
+      fitFlowRef.current();
     }, 2500);
     return () => clearTimeout(t);
   }, [flow, graph, layoutVersion]);
@@ -1721,7 +1833,7 @@ function Index() {
               open={viewOpen}
               setOpen={(v) => {
                 setViewOpen(v);
-                if (v) { setPagesOpen(false); setCollOpen(false); setSubsOpen(false); }
+                if (v) { setFiltersOpen(false); setPagesOpen(false); setCollOpen(false); setSubsOpen(false); }
               }}
               savedFlash={savedFlash}
               onSave={() => {
@@ -1746,20 +1858,32 @@ function Index() {
               traceActive={!!traceId}
               onClearTrace={() => setTraceId(null)}
             />
+            <FiltersMenu
+              open={filtersOpen}
+              setOpen={(v) => {
+                setFiltersOpen(v);
+                if (v) { setViewOpen(false); setPagesOpen(false); setCollOpen(false); setSubsOpen(false); }
+              }}
+              sets={data?.sets ?? []}
+              filterSet={filterSet}
+              setFilterSet={setFilterSet}
+              filterKind={filterKind}
+              setFilterKind={setFilterKind}
+            />
             <SubmissionsMenu
               userId={userId}
               items={(data?.items ?? []).map((i) => ({ id: i.id, name: i.name, kind: i.kind }))}
               open={subsOpen}
               setOpen={(v) => {
                 setSubsOpen(v);
-                if (v) { setViewOpen(false); setPagesOpen(false); setCollOpen(false); }
+                if (v) { setViewOpen(false); setFiltersOpen(false); setPagesOpen(false); setCollOpen(false); }
               }}
             />
             <PagesMenu
               open={pagesOpen}
               setOpen={(v) => {
                 setPagesOpen(v);
-                if (v) { setViewOpen(false); setCollOpen(false); setSubsOpen(false); }
+                if (v) { setViewOpen(false); setFiltersOpen(false); setCollOpen(false); setSubsOpen(false); }
               }}
             />
             <CollectionsMenu
@@ -1784,23 +1908,9 @@ function Index() {
               open={collOpen}
               setOpen={(v) => {
                 setCollOpen(v);
-                if (v) { setViewOpen(false); setPagesOpen(false); setSubsOpen(false); }
+                if (v) { setViewOpen(false); setFiltersOpen(false); setPagesOpen(false); setSubsOpen(false); }
               }}
             />
-          </div>
-          <div className="flex w-full flex-col gap-1 rounded-xl text-xs md:w-60 border border-border bg-background p-2 shadow-sm">
-            <label htmlFor="set-filter" className="text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
-            <select id="set-filter" value={filterSet} onChange={(e) => setFilterSet(e.target.value)} className="w-full bg-background text-foreground outline-none">
-              <option value="">All sets</option>
-              {data?.sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
-            </select>
-            <label htmlFor="kind-filter" className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">Node type</label>
-            <select id="kind-filter" value={filterKind} onChange={(e) => setFilterKind(e.target.value)} className="w-full bg-background text-foreground outline-none">
-              <option value="">All types</option>
-              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map((kind) => (
-                <option key={kind} value={kind}>{kind.replace(/^./, (letter) => letter.toUpperCase())}</option>
-              ))}
-            </select>
           </div>
           {active && (
             <p className="max-w-56 text-right text-[11px] leading-snug text-muted-foreground">
