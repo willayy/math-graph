@@ -1720,11 +1720,15 @@ function Index() {
   const [flow, setFlow] = useState<ReactFlowInstance | null>(null);
   const clickedNodeRef = useRef(false);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fitFlowRef = useRef<() => void>(() => {});
+  fitFlowRef.current = () => {
+    if (!clickedNodeRef.current) void flow?.fitView({ padding: 0.2, duration: 800, includeHiddenNodes: true });
+  };
   // Re-fit the view once, after the initial layout has had time to settle
   useEffect(() => {
     if (!flow || !graph || !layoutVersion) return;
     const t = setTimeout(() => {
-      if (!clickedNodeRef.current) void flow.fitView({ padding: 0.2, duration: 800, includeHiddenNodes: true });
+      fitFlowRef.current();
     }, 2500);
     return () => clearTimeout(t);
   }, [flow, graph, layoutVersion]);
