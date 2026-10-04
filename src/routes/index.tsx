@@ -681,6 +681,43 @@ function ViewMenu(props: {
   );
 }
 
+function FiltersMenu(props: {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  sets: { id: string; name: string }[];
+  filterSet: string;
+  setFilterSet: (value: string) => void;
+  filterKind: string;
+  setFilterKind: (value: string) => void;
+}) {
+  return (
+    <div className="relative flex flex-1">
+      <button onClick={() => props.setOpen(!props.open)} className={segmentBtn} aria-expanded={props.open}>
+        Filters <Chevron open={props.open} />
+      </button>
+      {props.open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => props.setOpen(false)} />
+          <div className="absolute right-0 top-full z-20 mt-1 w-60 space-y-2 rounded-md border border-border bg-background p-3 shadow-md">
+            <label htmlFor="set-filter" className="block text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
+            <select id="set-filter" value={props.filterSet} onChange={(e) => props.setFilterSet(e.target.value)} className="w-full bg-background text-xs text-foreground outline-none">
+              <option value="">All sets</option>
+              {props.sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
+            </select>
+            <label htmlFor="kind-filter" className="block text-[10px] font-semibold uppercase text-muted-foreground">Node type</label>
+            <select id="kind-filter" value={props.filterKind} onChange={(e) => props.setFilterKind(e.target.value)} className="w-full bg-background text-xs text-foreground outline-none">
+              <option value="">All types</option>
+              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map((kind) => (
+                <option key={kind} value={kind}>{kind.replace(/^./, (letter) => letter.toUpperCase())}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Pages dropdown: links to the change history and about pages.
 function PagesMenu({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   return (
@@ -1311,6 +1348,7 @@ function Index() {
   const [showOnly, setShowOnly] = useState(false);
   const [collOpen, setCollOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [pagesOpen, setPagesOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
   const active = collections.find((c) => c.id === activeId) ?? null;
@@ -1721,7 +1759,7 @@ function Index() {
               open={viewOpen}
               setOpen={(v) => {
                 setViewOpen(v);
-                if (v) { setPagesOpen(false); setCollOpen(false); setSubsOpen(false); }
+                if (v) { setFiltersOpen(false); setPagesOpen(false); setCollOpen(false); setSubsOpen(false); }
               }}
               savedFlash={savedFlash}
               onSave={() => {
@@ -1746,20 +1784,32 @@ function Index() {
               traceActive={!!traceId}
               onClearTrace={() => setTraceId(null)}
             />
+            <FiltersMenu
+              open={filtersOpen}
+              setOpen={(v) => {
+                setFiltersOpen(v);
+                if (v) { setViewOpen(false); setPagesOpen(false); setCollOpen(false); setSubsOpen(false); }
+              }}
+              sets={data?.sets ?? []}
+              filterSet={filterSet}
+              setFilterSet={setFilterSet}
+              filterKind={filterKind}
+              setFilterKind={setFilterKind}
+            />
             <SubmissionsMenu
               userId={userId}
               items={(data?.items ?? []).map((i) => ({ id: i.id, name: i.name, kind: i.kind }))}
               open={subsOpen}
               setOpen={(v) => {
                 setSubsOpen(v);
-                if (v) { setViewOpen(false); setPagesOpen(false); setCollOpen(false); }
+                if (v) { setViewOpen(false); setFiltersOpen(false); setPagesOpen(false); setCollOpen(false); }
               }}
             />
             <PagesMenu
               open={pagesOpen}
               setOpen={(v) => {
                 setPagesOpen(v);
-                if (v) { setViewOpen(false); setCollOpen(false); setSubsOpen(false); }
+                if (v) { setViewOpen(false); setFiltersOpen(false); setCollOpen(false); setSubsOpen(false); }
               }}
             />
             <CollectionsMenu
@@ -1784,23 +1834,9 @@ function Index() {
               open={collOpen}
               setOpen={(v) => {
                 setCollOpen(v);
-                if (v) { setViewOpen(false); setPagesOpen(false); setSubsOpen(false); }
+                if (v) { setViewOpen(false); setFiltersOpen(false); setPagesOpen(false); setSubsOpen(false); }
               }}
             />
-          </div>
-          <div className="flex w-full flex-col gap-1 rounded-xl text-xs md:w-60 border border-border bg-background p-2 shadow-sm">
-            <label htmlFor="set-filter" className="text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
-            <select id="set-filter" value={filterSet} onChange={(e) => setFilterSet(e.target.value)} className="w-full bg-background text-foreground outline-none">
-              <option value="">All sets</option>
-              {data?.sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
-            </select>
-            <label htmlFor="kind-filter" className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">Node type</label>
-            <select id="kind-filter" value={filterKind} onChange={(e) => setFilterKind(e.target.value)} className="w-full bg-background text-foreground outline-none">
-              <option value="">All types</option>
-              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map((kind) => (
-                <option key={kind} value={kind}>{kind.replace(/^./, (letter) => letter.toUpperCase())}</option>
-              ))}
-            </select>
           </div>
           {active && (
             <p className="max-w-56 text-right text-[11px] leading-snug text-muted-foreground">
