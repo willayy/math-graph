@@ -1030,7 +1030,7 @@ type SimEdge = { source: string; target: string };
 
 const REPULSION = 700000; // inverse-square strength — dominates all other forces
 const REPULSE_RANGE = 1200;
-const GRAVITY = 0.0012;
+const CENTER_PULL = 0.0012; // gentle pull toward the middle of the canvas
 const DAMPING = 0.85;
 const MAX_SPEED = 30;
 const REST_SPEED = 0.3;
@@ -1274,8 +1274,8 @@ function forceStep(
       return n;
     }
     const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
-    let vx = (v.vx + (fx[i]! + (mx - cx(n)) * GRAVITY) * alpha) * DAMPING;
-    let vy = (v.vy + (fy[i]! + (my - cy(n)) * GRAVITY) * alpha) * DAMPING;
+    let vx = (v.vx + (fx[i]! + (mx - cx(n)) * CENTER_PULL) * alpha) * DAMPING;
+    let vy = (v.vy + (fy[i]! + (my - cy(n)) * CENTER_PULL) * alpha) * DAMPING;
     const sp = Math.hypot(vx, vy);
     if (sp > MAX_SPEED) {
       vx = (vx / sp) * MAX_SPEED;
