@@ -736,6 +736,12 @@ function PagesMenu({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => 
               <Link to="/about" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
                 About
               </Link>
+              <Link to="/verify" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
+                Verify identity
+              </Link>
+              <Link to="/admin" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
+                Admin review queue
+              </Link>
             </div>
           </div>
         </>
