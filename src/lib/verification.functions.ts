@@ -110,3 +110,66 @@ Reply with ONLY a JSON object: {"student_card_name": string|null, "id_card_name"
       message: status === "approved" ? "You're verified — you can now submit and review." : "An admin will review your documents shortly.",
     };
   });
+
+async function assertAdmin(supabase: { rpc: (...a: never[]) => unknown }, userId: string) {
+  const rpc = supabase.rpc as unknown as (
+    fn: string, args: Record<string, unknown>,
+  ) => Promise<{ data: boolean | null }>;
+  const { data } = await rpc.call(supabase, "has_role", { _user_id: userId, _role: "admin" });
+  if (!data) throw new Error("Admins only.");
+}
+
+export const checkIsAdmin = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data } = await context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" });
+    return { admin: !!data };
+  });
+
+export const listVerifications = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.supabase as never, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rows, error } = await supabaseAdmin
+      .from("identity_verifications").select("*")
+      .in("status", ["needs_review", "checking"]).order("created_at");
+    if (error) throw new Error(error.message);
+    return Promise.all((rows ?? []).map(async (r) => {
+      const [{ data: u }, { data: p }, s1, s2] = await Promise.all([
+        supabaseAdmin.auth.admin.getUserById(r.user_id),
+        supabaseAdmin.from("profiles").select("full_name").eq("id", r.user_id).maybeSingle(),
+        supabaseAdmin.storage.from("id-documents").createSignedUrl(r.student_card_path, 600),
+        supabaseAdmin.storage.from("id-documents").createSignedUrl(r.id_card_path, 600),
+      ]);
+      return {
+        userId: r.user_id, status: r.status, studentId: r.student_id,
+        email: u.user?.email ?? "", fullName: p?.full_name ?? "",
+        confidence: r.ai_confidence === null ? null : Number(r.ai_confidence),
+        summary: r.ai_summary ?? "", createdAt: r.created_at,
+        studentCardUrl: s1.data?.signedUrl ?? "", idCardUrl: s2.data?.signedUrl ?? "",
+      };
+    }));
+  });
+
+const Decision = z.object({
+  userId: z.string().uuid(),
+  approve: z.boolean(),
+  note: z.string().max(500).optional(),
+});
+
+export const decideVerification = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => Decision.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase as never, context.userId);
+    const { error } = await context.supabase.from("identity_verifications").update({
+      status: data.approve ? "approved" : "rejected",
+      reviewer_id: context.userId,
+      reviewer_note: data.note ?? null,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("user_id", data.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
