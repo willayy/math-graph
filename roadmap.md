@@ -59,3 +59,5 @@
 - [x] Menu bar scales with window size
 - [x] Improve initial settling so rendered edges do not cross and set outlines stay separate
 - [x] Move graph filters into their own tab in the top menu
+- [ ] Merge the Layered layout (left to right) draft into main (acceptance queued)
+- [ ] Validate and finalize deterministic left-to-right placement and smooth lane routing after the draft merge, preserving saved layouts
