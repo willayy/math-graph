@@ -28,13 +28,14 @@ const FOUNDATION = new Set(["axiom", "definition"]);
 type Slot = { id: string; layer: number; band: number; height: number; width: number; dummy: boolean };
 
 // One full layout pass. Long edges reserve a dummy lane in every column they
-// span; dummyBand chooses whether those lanes sit in the source's set band
-// (vertical jump at the target end) or the target's band (jump at the start).
+// span; dummyBands chooses per edge whether those lanes sit in the source's
+// set band (vertical jump at the target end) or the target's band (jump at
+// the start).
 function layoutOnce(
   nodes: LayoutNode[],
   edges: LayoutEdge[],
   setRank: (set: string | null) => number,
-  dummyBand: "source" | "target",
+  dummyBands: ReadonlyMap<string, "source" | "target">,
 ): LayeredResult {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const valid = edges.filter((e) => byId.has(e.source) && byId.has(e.target) && e.source !== e.target);
@@ -69,7 +70,7 @@ function layoutOnce(
     const chain = [e.source];
     for (let l = a + 1; l < b; l++) {
       const id = `__dummy:${e.id}:${l}`;
-      slots.set(id, { id, layer: l, band: slots.get(dummyBand === "source" ? e.source : e.target)!.band, height: DUMMY_H, width: 0, dummy: true });
+      slots.set(id, { id, layer: l, band: slots.get(dummyBands.get(e.id) === "target" ? e.target : e.source)!.band, height: DUMMY_H, width: 0, dummy: true });
       chain.push(id);
     }
     chain.push(e.target);
