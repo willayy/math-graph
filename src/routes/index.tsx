@@ -25,6 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { SubmissionsMenu } from "@/components/SubmissionsMenu";
 import { renderLatex } from "@/lib/latex.functions";
 import { Bookmark, Pin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { layeredLayout, type LayeredResult } from "@/lib/layered-layout";
 
 export const Route = createFileRoute("/")({
@@ -151,131 +152,183 @@ const KIND_STYLES: Record<Kind, { border: string; label: string; chip: string }>
 };
 
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item, expanded, relations, pinned, onTogglePin, inCollection, onToggleCollection, tracing, onTrace } = data;
-  const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
+  const { t } = useTranslation();
+  const {
+    item,
+    expanded,
+    relations,
+    pinned,
+    onTogglePin,
+    inCollection,
+    onToggleCollection,
+    tracing,
+    onTrace,
+  } = data;
+  const dateText = item.date ?? t("common.unknown");
+  const creatorText = item.creator ?? t("common.unknown");
+  const meta = [dateText, creatorText].join(" · ");
   const style = KIND_STYLES[item.kind];
   const zoom = useStore((st) => st.transform[2]);
-  // Begin revealing detail while still zoomed out; keep the same box and
-  // handles mounted throughout so changing modes never jolts the layout.
   const detailOpacity = clamp01((zoom - 0.32) / 0.2);
+  const collectionTitle = inCollection
+    ? t("graph.removeFromCollection")
+    : t("graph.addToCollection");
+  const pinTitle = pinned ? t("graph.unpin") : t("graph.pin");
+
   return (
     <div
       className={`relative cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
       style={{ width: expanded ? 340 : NODE_W, minHeight: NODE_H }}
     >
-      <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!opacity-0 !pointer-events-none"
+        isConnectable={false}
+      />
       <div
         className="pointer-events-none absolute inset-3 flex items-center justify-center text-center transition-opacity duration-200"
         style={{ opacity: 1 - detailOpacity }}
         aria-hidden={detailOpacity === 1}
       >
-        <span className="line-clamp-3 text-3xl font-semibold leading-tight text-foreground">{item.name}</span>
-      </div>
-      <div className="transition-opacity duration-200" style={{ opacity: detailOpacity, pointerEvents: detailOpacity < 0.85 ? "none" : "auto" }}>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest ${style.label}`}>
-          <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
-          {item.kind}
+        <span className="line-clamp-3 text-3xl font-semibold leading-tight text-foreground">
+          {item.name}
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
-          {onToggleCollection && (
+      </div>
+      <div
+        className="transition-opacity duration-200"
+        style={{ opacity: detailOpacity, pointerEvents: detailOpacity < 0.85 ? "none" : "auto" }}
+      >
+        <div className="flex items-baseline justify-between gap-2">
+          <span
+            className={
+              `flex items-center gap-1.5 text-[10px] font-semibold uppercase ` +
+              `tracking-widest ${style.label}`
+            }
+          >
+            <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
+            {item.kind}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
+            {onToggleCollection && (
+              <button
+                title={collectionTitle}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleCollection(item.id);
+                }}
+                className={`nodrag rounded p-0.5 transition-colors ${
+                  inCollection
+                    ? "text-foreground"
+                    : "text-muted-foreground/40 hover:text-muted-foreground"
+                }`}
+              >
+                <Bookmark className="h-3 w-3" fill={inCollection ? "currentColor" : "none"} />
+              </button>
+            )}
             <button
-              title={inCollection ? "Remove from collection" : "Add to collection"}
+              title={pinTitle}
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleCollection(item.id);
+                onTogglePin?.(item.id);
               }}
               className={`nodrag rounded p-0.5 transition-colors ${
-                inCollection ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
+                pinned ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
               }`}
             >
-              <Bookmark className="h-3 w-3" fill={inCollection ? "currentColor" : "none"} />
+              <Pin className="h-3 w-3" fill={pinned ? "currentColor" : "none"} />
             </button>
-          )}
+          </span>
+        </div>
+        <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">{item.name}</h3>
+        <p
+          className={`mt-1 text-xs leading-snug text-foreground/75 ${
+            expanded ? "" : "line-clamp-3"
+          }`}
+        >
+          {zoom > 0.32 ? <RichText text={item.statement} /> : item.statement.replace(/\$/g, "")}
+        </p>
+        {item.citation && (
+          <p
+            className={
+              `mt-1.5 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground ${
+                expanded ? "" : "line-clamp-1"
+              }`
+            }
+          >
+            {item.citation}
+          </p>
+        )}
+        {expanded && (
+          <dl className="mt-2 space-y-1 border-t border-border pt-2 text-[10px]">
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 font-semibold uppercase text-muted-foreground">
+                {t("common.type")}
+              </dt>
+              <dd className="capitalize text-foreground/80">{item.kind}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 font-semibold uppercase text-muted-foreground">
+                {t("common.date")}
+              </dt>
+              <dd className="text-foreground/80">{item.date ?? t("common.unknown")}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 font-semibold uppercase text-muted-foreground">
+                {t("common.creator")}
+              </dt>
+              <dd className="text-foreground/80">{item.creator ?? t("common.unknown")}</dd>
+            </div>
+            {item.citation && (
+              <div className="flex gap-2">
+                <dt className="w-14 shrink-0 font-semibold uppercase text-muted-foreground">
+                  {t("common.source")}
+                </dt>
+                <dd className="italic text-foreground/80">{item.citation}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+        {expanded && relations && relations.length > 0 && (
+          <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+            {relations.map((g) => (
+              <div key={g.label}>
+                <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                  {g.label}
+                </p>
+                <ul className="mt-0.5 space-y-0.5 text-[11px] leading-snug text-foreground/80">
+                  {g.items.map((r, i) => (
+                    <li key={i}>• {r}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+        {expanded && onTrace && (
           <button
-            title={pinned ? "Unpin — let it move freely" : "Pin — keep it in place"}
             onClick={(e) => {
               e.stopPropagation();
-              onTogglePin?.(item.id);
+              onTrace(item.id);
             }}
-            className={`nodrag rounded p-0.5 transition-colors ${
-              pinned ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
-            }`}
+            className={
+              "nodrag mt-2 w-full rounded border border-border px-2 py-1 text-[11px] hover:bg-muted"
+            }
           >
-            <Pin className="h-3 w-3" fill={pinned ? "currentColor" : "none"} />
+            {tracing ? t("graph.showEverything") : t("graph.showCanonicalTrace")}
           </button>
-        </span>
+        )}
+        {expanded && (
+          <p className="mt-1.5 text-[10px] text-muted-foreground">{t("graph.clickToCollapse")}</p>
+        )}
       </div>
-      <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">
-        {item.name}
-      </h3>
-      <p
-        className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
-      >
-        {zoom > 0.32 ? <RichText text={item.statement} /> : item.statement.replace(/\$/g, "")}
-      </p>
-      {item.citation && (
-        <p
-          className={`mt-1.5 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground ${expanded ? "" : "line-clamp-1"}`}
-        >
-          {item.citation}
-        </p>
-      )}
-      {expanded && (
-        <dl className="mt-2 space-y-1 border-t border-border pt-2 text-[10px]">
-          <div className="flex gap-2">
-            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Type</dt>
-            <dd className="capitalize text-foreground/80">{item.kind}</dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Date</dt>
-            <dd className="text-foreground/80">{item.date ?? "Unknown"}</dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Creator</dt>
-            <dd className="text-foreground/80">{item.creator ?? "Unknown"}</dd>
-          </div>
-          {item.citation && (
-            <div className="flex gap-2">
-              <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Source</dt>
-              <dd className="italic text-foreground/80">{item.citation}</dd>
-            </div>
-          )}
-        </dl>
-      )}
-      {expanded && relations && relations.length > 0 && (
-        <div className="mt-2 space-y-1.5 border-t border-border pt-2">
-          {relations.map((g) => (
-            <div key={g.label}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {g.label}
-              </p>
-              <ul className="mt-0.5 space-y-0.5 text-[11px] leading-snug text-foreground/80">
-                {g.items.map((r, i) => (
-                  <li key={i}>• {r}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-      {expanded && onTrace && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onTrace(item.id);
-          }}
-          className="nodrag mt-2 w-full rounded border border-border px-2 py-1 text-[11px] hover:bg-muted"
-        >
-          {tracing ? "Show everything" : "Show canonical trace only"}
-        </button>
-      )}
-      {expanded && (
-        <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
-      )}
-      </div>
-      <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!opacity-0 !pointer-events-none"
+        isConnectable={false}
+      />
     </div>
   );
 }
