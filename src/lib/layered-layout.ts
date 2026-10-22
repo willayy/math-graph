@@ -69,7 +69,7 @@ function layoutOnce(
     const chain = [e.source];
     for (let l = a + 1; l < b; l++) {
       const id = `__dummy:${e.id}:${l}`;
-      slots.set(id, { id, layer: l, band: slots.get(e.source)!.band, height: DUMMY_H, width: 0, dummy: true });
+      slots.set(id, { id, layer: l, band: slots.get(dummyBand === "source" ? e.source : e.target)!.band, height: DUMMY_H, width: 0, dummy: true });
       chain.push(id);
     }
     chain.push(e.target);
@@ -234,4 +234,14 @@ function layoutOnce(
     });
   }
   return { positions, routes, crossings: bestScore };
+}
+
+// Deterministic left-to-right layout. Runs both dummy-lane routings and keeps
+// the one with fewer drawn crossings (ties keep the source-band routing), so
+// long edges between sets pick the side that tangles less.
+export function layeredLayout(nodes: LayoutNode[], edges: LayoutEdge[], setRank: (set: string | null) => number): LayeredResult {
+  const fromSource = layoutOnce(nodes, edges, setRank, "source");
+  if (fromSource.crossings === 0) return fromSource;
+  const fromTarget = layoutOnce(nodes, edges, setRank, "target");
+  return fromTarget.crossings < fromSource.crossings ? fromTarget : fromSource;
 }
