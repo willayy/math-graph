@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { submitVerification } from "@/lib/verification.functions";
 
@@ -21,6 +22,7 @@ type Status = { status: string; reviewer_note: string | null; ai_summary: string
 const field = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm";
 
 function VerifyPage() {
+  const { t } = useTranslation();
   const [userId, setUserId] = useState<string | null | undefined>(undefined);
   const [current, setCurrent] = useState<Status>(null);
   const [studentId, setStudentId] = useState("");
@@ -52,7 +54,7 @@ function VerifyPage() {
     e.preventDefault();
     if (!userId || !studentCard || !idCard) return;
     setBusy(true);
-    setMsg("Uploading and checking your documents…");
+    setMsg(t("verify.uploadingMessage"));
     try {
       const studentCardPath = await upload(userId, studentCard, "student-card");
       const idCardPath = await upload(userId, idCard, "id-card");
@@ -60,53 +62,86 @@ function VerifyPage() {
       setMsg(res.message);
       await load();
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Something went wrong.");
+      const genericMsg = t("verify.genericError");
+      setMsg(err instanceof Error ? err.message : genericMsg);
     }
     setBusy(false);
   }
 
-  if (userId === undefined) return <main className="p-6 text-sm text-muted-foreground">Loading…</main>;
+  if (userId === undefined) {
+    return <main className="p-6 text-sm text-muted-foreground">{t("common.loading")}</main>;
+  }
 
   return (
     <main className="grid min-h-screen place-items-center bg-background p-6">
       <div className="w-full max-w-md space-y-4 rounded-lg border border-border p-6 shadow-sm">
-        <h1 className="text-lg font-semibold text-foreground">Verify your identity</h1>
-        <p className="text-xs text-muted-foreground">
-          To submit and review you need a confirmed university email, your student ID number,
-          a photo of your student card and a photo of a government ID. The name must match on all of them.
-        </p>
+        <h1 className="text-lg font-semibold text-foreground">{t("verify.heading")}</h1>
+        <p className="text-xs text-muted-foreground">{t("verify.description")}</p>
         {!userId ? (
-          <Link to="/auth" className="block rounded-md bg-primary px-3 py-2 text-center text-sm text-primary-foreground">
-            Sign in to verify
+          <Link
+            to="/auth"
+            className={
+              "block rounded-md bg-primary px-3 py-2 text-center text-sm text-primary-foreground"
+            }
+          >
+            {t("verify.signInToVerify")}
           </Link>
         ) : current?.status === "approved" ? (
-          <p className="text-sm text-foreground">You're verified — you can submit and review.</p>
+          <p className="text-sm text-foreground">{t("verify.verifiedNotice")}</p>
         ) : current?.status === "needs_review" || current?.status === "checking" ? (
-          <p className="text-sm text-foreground">Your documents are waiting for an admin to review them.</p>
+          <p className="text-sm text-foreground">{t("verify.waitingReviewNotice")}</p>
         ) : (
           <form onSubmit={submit} className="space-y-3">
             {current?.status === "rejected" && (
               <p className="text-xs text-destructive">
-                Previous attempt rejected{current.reviewer_note ? `: ${current.reviewer_note}` : "."} You can try again.
+                {t("verify.previousRejected")}
+                {current.reviewer_note ? `: ${current.reviewer_note}` : "."}{" "}
+                {t("verify.canTryAgain")}
               </p>
             )}
-            <input required minLength={2} placeholder="Student ID number" value={studentId}
-              onChange={(e) => setStudentId(e.target.value)} className={field} />
-            <label className="block text-xs text-muted-foreground">Photo of student ID card
-              <input required type="file" accept="image/*" className={field}
-                onChange={(e) => setStudentCard(e.target.files?.[0] ?? null)} />
+            <input
+              required
+              minLength={2}
+              placeholder={t("verify.studentIdPlaceholder")}
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              className={field}
+            />
+            <label className="block text-xs text-muted-foreground">
+              {t("verify.studentCardLabel")}
+              <input
+                required
+                type="file"
+                accept="image/*"
+                className={field}
+                onChange={(e) => setStudentCard(e.target.files?.[0] ?? null)}
+              />
             </label>
-            <label className="block text-xs text-muted-foreground">Photo of driver's license, passport or national ID
-              <input required type="file" accept="image/*" className={field}
-                onChange={(e) => setIdCard(e.target.files?.[0] ?? null)} />
+            <label className="block text-xs text-muted-foreground">
+              {t("verify.idCardLabel")}
+              <input
+                required
+                type="file"
+                accept="image/*"
+                className={field}
+                onChange={(e) => setIdCard(e.target.files?.[0] ?? null)}
+              />
             </label>
-            <button disabled={busy} className="w-full rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">
-              Submit for verification
+            <button
+              disabled={busy}
+              className={
+                "w-full rounded-md bg-primary px-3 py-2 text-sm " +
+                "text-primary-foreground disabled:opacity-50"
+              }
+            >
+              {t("verify.submitButton")}
             </button>
           </form>
         )}
         {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
-        <Link to="/" className="block text-xs text-muted-foreground underline">Back to graph</Link>
+        <Link to="/" className="block text-xs text-muted-foreground underline">
+          {t("common.backToGraph")}
+        </Link>
       </div>
     </main>
   );
