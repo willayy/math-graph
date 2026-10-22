@@ -35,6 +35,22 @@ describe("Layered graph layout", () => {
     expect(positions["c"]?.y).toBeGreaterThan(750);
   });
 
+  it("routes long edges between sets without crossings", () => {
+    const nodes = [
+      node("s1", "axiom"), node("s2", "axiom"), node("mid", "theorem"),
+      node("t1", "theorem", 155, "other"), node("t2", "theorem", 155, "other"),
+    ];
+    const edges = [
+      { id: "s1mid", source: "s1", target: "mid" },
+      { id: "midt1", source: "mid", target: "t1" },
+      { id: "midt2", source: "mid", target: "t2" },
+      { id: "s1t2", source: "s1", target: "t2" },
+      { id: "s2t1", source: "s2", target: "t1" },
+    ];
+    const result = layeredLayout(nodes, edges, rank);
+    expect(result.crossings).toBe(0);
+  });
+
   it("removes an avoidable crossing within a set", () => {
     const result = layeredLayout(
       [node("a", "axiom"), node("b", "axiom"), node("t", "theorem"), node("u", "theorem")],

@@ -418,16 +418,15 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
   } else {
     const dx = tc.x - sc.x;
     const dy = tc.y - sc.y;
-    // Point where the ray from a box center toward the other exits its rectangle
-    const bound = (cx: number, cy: number, bw: number, bh: number, vx: number, vy: number) => {
-      if (vx === 0 && vy === 0) return { x: cx, y: cy };
-      const s = Math.min(vx === 0 ? Infinity : bw / 2 / Math.abs(vx), vy === 0 ? Infinity : bh / 2 / Math.abs(vy));
-      return { x: cx + vx * s, y: cy + vy * s };
-    };
-    const p1 = bound(sc.x, sc.y, w(sn), h(sn), dx, dy);
-    const p2 = bound(tc.x, tc.y, w(tn), h(tn), -dx, -dy);
-    // Flow left to right when the boxes are side by side; otherwise curve vertically
+    // Attach only at the middle of a box side: left/right when the boxes are
+    // side by side, top/bottom when they are stacked.
     const horiz = Math.abs(dx) >= Math.abs(dy);
+    const p1 = horiz
+      ? { x: sc.x + (dx >= 0 ? w(sn) / 2 : -w(sn) / 2), y: sc.y }
+      : { x: sc.x, y: sc.y + (dy >= 0 ? h(sn) / 2 : -h(sn) / 2) };
+    const p2 = horiz
+      ? { x: tc.x + (dx >= 0 ? -w(tn) / 2 : w(tn) / 2), y: tc.y }
+      : { x: tc.x, y: tc.y + (dy >= 0 ? -h(tn) / 2 : h(tn) / 2) };
     const [p, lx, ly] = getBezierPath({
       sourceX: p1.x,
       sourceY: p1.y,

@@ -60,5 +60,7 @@
 - [x] Improve initial settling so rendered edges do not cross and set outlines stay separate
 - [x] Move graph filters into their own tab in the top menu
 - [x] Replace force simulation with deterministic left-to-right layered (Sugiyama) layout
-- [ ] Merge the Layered layout (left to right) draft into main (acceptance queued)
-- [ ] Validate and finalize deterministic left-to-right placement and smooth lane routing after the draft merge, preserving saved layouts
+- [x] Merge the Layered layout (left to right) draft into main (acceptance queued)
+- [x] Validate and finalize deterministic left-to-right placement and smooth lane routing after the draft merge, preserving saved layouts
+- [ ] Connect edges only at the middle points of the top/bottom/left/right sides of boxes
+- [ ] Prevent lines from crossing each other

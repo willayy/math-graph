@@ -27,7 +27,16 @@ const FOUNDATION = new Set(["axiom", "definition"]);
 
 type Slot = { id: string; layer: number; band: number; height: number; width: number; dummy: boolean };
 
-export function layeredLayout(nodes: LayoutNode[], edges: LayoutEdge[], setRank: (set: string | null) => number): LayeredResult {
+// One full layout pass. Long edges reserve a dummy lane in every column they
+// span; dummyBands chooses per edge whether those lanes sit in the source's
+// set band (vertical jump at the target end) or the target's band (jump at
+// the start).
+function layoutOnce(
+  nodes: LayoutNode[],
+  edges: LayoutEdge[],
+  setRank: (set: string | null) => number,
+  dummyBands: ReadonlyMap<string, "source" | "target">,
+): LayeredResult {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const valid = edges.filter((e) => byId.has(e.source) && byId.has(e.target) && e.source !== e.target);
   const incoming = new Map<string, string[]>();
@@ -61,7 +70,7 @@ export function layeredLayout(nodes: LayoutNode[], edges: LayoutEdge[], setRank:
     const chain = [e.source];
     for (let l = a + 1; l < b; l++) {
       const id = `__dummy:${e.id}:${l}`;
-      slots.set(id, { id, layer: l, band: slots.get(e.source)!.band, height: DUMMY_H, width: 0, dummy: true });
+      slots.set(id, { id, layer: l, band: slots.get(dummyBands.get(e.id) === "target" ? e.target : e.source)!.band, height: DUMMY_H, width: 0, dummy: true });
       chain.push(id);
     }
     chain.push(e.target);
@@ -226,4 +235,48 @@ export function layeredLayout(nodes: LayoutNode[], edges: LayoutEdge[], setRank:
     });
   }
   return { positions, routes, crossings: bestScore };
+}
+
+// Deterministic left-to-right layout. Long edges that cross set bands can
+// jump bands at either end; greedily pick each edge's side (in id order,
+// keeping flips that strictly reduce crossings) so the result tangles as
+// little as the banded structure allows.
+export function layeredLayout(nodes: LayoutNode[], edges: LayoutEdge[], setRank: (set: string | null) => number): LayeredResult {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const layerOf = (() => {
+    // Reuse a cheap longest-path pass to find edges spanning a column.
+    const incoming = new Map<string, string[]>();
+    for (const e of edges) if (byId.has(e.source) && byId.has(e.target)) incoming.set(e.target, [...(incoming.get(e.target) ?? []), e.source]);
+    const layer = new Map<string, number>();
+    const visit = (id: string, stack: Set<string>): number => {
+      const known = layer.get(id);
+      if (known !== undefined) return known;
+      if (stack.has(id)) return 0;
+      stack.add(id);
+      const deps = incoming.get(id) ?? [];
+      const value = deps.length ? 1 + Math.max(...deps.map((d) => visit(d, stack))) : FOUNDATION.has(byId.get(id)!.kind) ? 0 : 1;
+      stack.delete(id);
+      layer.set(id, value);
+      return value;
+    };
+    nodes.forEach((n) => visit(n.id, new Set()));
+    return layer;
+  })();
+  const longEdges = edges
+    .filter((e) => byId.has(e.source) && byId.has(e.target) && layerOf.get(e.target)! > layerOf.get(e.source)! + 1)
+    .map((e) => e.id)
+    .sort();
+  const bands = new Map<string, "source" | "target">(longEdges.map((id) => [id, "source"]));
+  let best = layoutOnce(nodes, edges, setRank, bands);
+  for (let sweep = 0; sweep < 4 && best.crossings > 0; sweep++) {
+    let improved = false;
+    for (const id of longEdges) {
+      bands.set(id, bands.get(id) === "source" ? "target" : "source");
+      const candidate = layoutOnce(nodes, edges, setRank, bands);
+      if (candidate.crossings < best.crossings) { best = candidate; improved = true; }
+      else bands.set(id, bands.get(id) === "source" ? "target" : "source");
+    }
+    if (!improved) break;
+  }
+  return best;
 }
