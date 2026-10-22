@@ -207,32 +207,82 @@ export function SubmissionsMenu(props: {
 
 const field = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm";
 
-function NewSubmission({ userId, items, onDone }: { userId: string; items: GraphItem[]; onDone: (id: string) => void }) {
-  const [f, setF] = useState({ kind: "theorem" as Kind, name: "", creator: "", date: "", statement: "", citation: "" });
+function NewSubmission({
+  userId,
+  items,
+  onDone,
+}: {
+  userId: string;
+  items: GraphItem[];
+  onDone: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [f, setF] = useState({
+    kind: "theorem" as Kind,
+    name: "",
+    creator: "",
+    date: "",
+    statement: "",
+    citation: "",
+  });
   const [links, setLinks] = useState<{ relation: Relation; id: string }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const relations: Relation[] = f.kind === "theorem" ? ["uses"] : f.kind === "proof" ? ["proof_of"] : [];
-  const relLabel: Record<Relation, string> = { uses: "Uses", proof_of: "Proof of" };
-  const targets = (r: Relation) => items.filter((i) => (r === "uses" ? i.kind !== "proof" : i.kind === "theorem"));
+  const relations: Relation[] =
+    f.kind === "theorem" ? ["uses"] : f.kind === "proof" ? ["proof_of"] : [];
+  const relLabel: Record<Relation, string> = {
+    uses: t("submissions.uses"),
+    proof_of: t("submissions.proofOf"),
+  };
+  const targets = (r: Relation) =>
+    items.filter((i) => (r === "uses" ? i.kind !== "proof" : i.kind === "theorem"));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    if (f.kind === "proof" && !links.length) return setErr("Pick the theorem this belongs to.");
+    if (f.kind === "proof" && !links.length) {
+      setErr(t("submissions.pickTheoremError"));
+      return;
+    }
     setBusy(true);
+    const trimmedName = f.name.trim();
+    const trimmedStatement = f.statement.trim();
     const { data, error } = await supabase
       .from("submissions")
-      .insert({ author_id: userId, kind: f.kind, name: f.name.trim(), statement: f.statement.trim(), creator: f.creator || null, date: f.date || null, citation: f.citation || null })
+      .insert({
+        author_id: userId,
+        kind: f.kind,
+        name: trimmedName,
+        statement: trimmedStatement,
+        creator: f.creator || null,
+        date: f.date || null,
+        citation: f.citation || null,
+      })
       .select("id")
       .single();
-    if (error || !data) { setBusy(false); return setErr(error?.message ?? "Could not submit"); }
+    if (error || !data) {
+      setBusy(false);
+      const submitErrMsg = error?.message ?? t("submissions.submitError");
+      setErr(submitErrMsg);
+      return;
+    }
     const valid = links.filter((l) => relations.includes(l.relation));
     if (valid.length) {
-      const { error: le } = await supabase.from("submission_links").insert(
-        valid.map((l) => ({ submission_id: data.id, relation: l.relation, target_id: l.id, target_type: items.find((i) => i.id === l.id)!.kind })),
-      );
-      if (le) { setBusy(false); return setErr(le.message); }
+      const mappedLinks = valid.map((l) => {
+        const targetObj = items.find((i) => i.id === l.id);
+        return {
+          submission_id: data.id,
+          relation: l.relation,
+          target_id: l.id,
+          target_type: targetObj!.kind,
+        };
+      });
+      const { error: le } = await supabase.from("submission_links").insert(mappedLinks);
+      if (le) {
+        setBusy(false);
+        setErr(le.message);
+        return;
+      }
     }
     setBusy(false);
     onDone(data.id);
@@ -241,52 +291,130 @@ function NewSubmission({ userId, items, onDone }: { userId: string; items: Graph
   return (
     <form onSubmit={submit} className="space-y-3">
       <DialogHeader>
-        <DialogTitle>Make a submission</DialogTitle>
-        <DialogDescription>It joins the graph once {NEEDED} other reviewers approve it. Use $...$ for math.</DialogDescription>
+        <DialogTitle>{t("submissions.makeSubmissionTitle")}</DialogTitle>
+        <DialogDescription>
+          {t("submissions.makeSubmissionDescription", { count: NEEDED })}
+        </DialogDescription>
       </DialogHeader>
-      <select value={f.kind} onChange={(e) => { setF({ ...f, kind: e.target.value as Kind }); setLinks([]); }} className={`${field} capitalize`}>
-        {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+      <select
+        value={f.kind}
+        onChange={(e) => {
+          setF({ ...f, kind: e.target.value as Kind });
+          setLinks([]);
+        }}
+        className={`${field} capitalize`}
+      >
+        {KINDS.map((k) => (
+          <option key={k} value={k}>
+            {k}
+          </option>
+        ))}
       </select>
-      <input required placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={field} />
-      <textarea required rows={4} placeholder="Statement" value={f.statement} onChange={(e) => setF({ ...f, statement: e.target.value })} className={field} />
+      <input
+        required
+        placeholder={t("common.name")}
+        value={f.name}
+        onChange={(e) => setF({ ...f, name: e.target.value })}
+        className={field}
+      />
+      <textarea
+        required
+        rows={4}
+        placeholder={t("submissions.statementPlaceholder")}
+        value={f.statement}
+        onChange={(e) => setF({ ...f, statement: e.target.value })}
+        className={field}
+      />
       <div className="grid grid-cols-2 gap-2">
-        <input placeholder="Creator (optional)" value={f.creator} onChange={(e) => setF({ ...f, creator: e.target.value })} className={field} />
-        <input placeholder="Date (optional)" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} className={field} />
+        <input
+          placeholder={t("submissions.creatorPlaceholder")}
+          value={f.creator}
+          onChange={(e) => setF({ ...f, creator: e.target.value })}
+          className={field}
+        />
+        <input
+          placeholder={t("submissions.datePlaceholder")}
+          value={f.date}
+          onChange={(e) => setF({ ...f, date: e.target.value })}
+          className={field}
+        />
       </div>
-      <input placeholder="Citation (optional)" value={f.citation} onChange={(e) => setF({ ...f, citation: e.target.value })} className={field} />
+      <input
+        placeholder={t("submissions.citationPlaceholder")}
+        value={f.citation}
+        onChange={(e) => setF({ ...f, citation: e.target.value })}
+        className={field}
+      />
       {relations.map((r) => (
         <div key={r} className="space-y-1.5">
           <p className="text-xs font-medium">{relLabel[r]}</p>
           <div className="flex flex-wrap gap-1">
-            {links.filter((l) => l.relation === r).map((l) => (
-              <button type="button" key={l.id} onClick={() => setLinks(links.filter((x) => x !== l))} className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted">
-                {items.find((i) => i.id === l.id)?.name} ×
-              </button>
-            ))}
+            {links
+              .filter((l) => l.relation === r)
+              .map((l) => (
+                <button
+                  type="button"
+                  key={l.id}
+                  onClick={() => setLinks(links.filter((x) => x !== l))}
+                  className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted"
+                >
+                  {items.find((i) => i.id === l.id)?.name} ×
+                </button>
+              ))}
           </div>
           {(r === "uses" || !links.some((l) => l.relation === r)) && (
-            <select value="" onChange={(e) => e.target.value && setLinks([...links, { relation: r, id: e.target.value }])} className={field}>
-              <option value="">Add…</option>
-              {targets(r).filter((t) => !links.some((l) => l.id === t.id)).map((t) => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  setLinks([...links, { relation: r, id: e.target.value }]);
+                }
+              }}
+              className={field}
+            >
+              <option value="">{t("submissions.addOption")}</option>
+              {targets(r)
+                .filter((tItem) => !links.some((l) => l.id === tItem.id))
+                .map((tItem) => (
+                  <option key={tItem.id} value={tItem.id}>
+                    {tItem.name} ({tItem.kind})
+                  </option>
+                ))}
             </select>
           )}
         </div>
       ))}
       {err && <p className="text-xs text-destructive">{err}</p>}
-      <button disabled={busy} className="w-full rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">Submit for review</button>
+      <button
+        disabled={busy}
+        className={
+          "w-full rounded-md bg-primary px-3 py-2 text-sm " +
+          "text-primary-foreground disabled:opacity-50"
+        }
+      >
+        {t("submissions.submitForReview")}
+      </button>
     </form>
   );
 }
 
-function SubmissionView(props: { id: string; data: Review; items: GraphItem[]; userId: string | null; academic: boolean; onChange: () => void }) {
+function SubmissionView(props: {
+  id: string;
+  data: Review;
+  items: GraphItem[];
+  userId: string | null;
+  academic: boolean;
+  onChange: () => void;
+}) {
   const { id, data, items, userId, academic, onChange } = props;
+  const { t } = useTranslation();
   const s = data.subs.find((x) => x.id === id);
   const [body, setBody] = useState("");
   const [suggest, setSuggest] = useState("");
   const [showSuggest, setShowSuggest] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  if (!s) return <p className="text-sm">Submission not found.</p>;
-  const name = (uid: string | null) => (uid && data.names.get(uid)) || "Unknown";
+  if (!s) return <p className="text-sm">{t("submissions.submissionNotFound")}</p>;
+  const name = (uid: string | null) => (uid && data.names.get(uid)) || t("common.unknown");
   const votes = data.votes.filter((v) => v.submission_id === id);
   const myVote = votes.find((v) => v.voter_id === userId);
   const links = data.links.filter((l) => l.submission_id === id);
