@@ -551,18 +551,20 @@ function ViewMenu(props: {
   onClearTrace: () => void;
 }) {
   const { open, setOpen } = props;
-  const item = "flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted";
+  const { t, i18n } = useTranslation();
+  const item =
+    "flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted";
   return (
     <div className="relative flex flex-1">
       <button onClick={() => setOpen(!open)} className={`${segmentBtn} rounded-l-xl`}>
-        View <Chevron open={open} />
+        {t("graph.viewMenu")} <Chevron open={open} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-md border border-border bg-background shadow-md">
             <p className="border-b border-border px-3 pb-1.5 pt-2.5 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
-              View &amp; layout
+              {t("graph.viewLayout")}
             </p>
             <div className="py-1">
               <button
@@ -572,13 +574,13 @@ function ViewMenu(props: {
                 }}
                 className={item}
               >
-                {props.savedFlash ? "Layout saved ✓" : "Save layout"}
+                {props.savedFlash ? t("graph.layoutSaved") : t("graph.saveLayout")}
               </button>
               <button onClick={props.onReset} className={item}>
-                Reset positions
+                {t("graph.resetPositions")}
               </button>
               <label className={`${item} cursor-pointer`}>
-                Canonical relations only
+                {t("graph.canonicalOnly")}
                 <input
                   type="checkbox"
                   checked={props.canonicalOnly}
@@ -594,9 +596,40 @@ function ViewMenu(props: {
                   }}
                   className={item}
                 >
-                  Clear canonical trace
+                  {t("graph.clearTrace")}
                 </button>
               )}
+            </div>
+            <div
+              className="flex items-center justify-between border-t border-border px-3 py-2 text-xs"
+            >
+              <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                {t("graph.language")}
+              </span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => void i18n.changeLanguage("en")}
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                    i18n.language.startsWith("en")
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {t("graph.langEn")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void i18n.changeLanguage("sv")}
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                    i18n.language.startsWith("sv")
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {t("graph.langSv")}
+                </button>
+              </div>
             </div>
           </div>
         </>
