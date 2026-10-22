@@ -647,26 +647,59 @@ function FiltersMenu(props: {
   filterKind: string;
   setFilterKind: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="relative flex flex-1">
-      <button onClick={() => props.setOpen(!props.open)} className={segmentBtn} aria-expanded={props.open}>
-        Filters <Chevron open={props.open} />
+      <button
+        onClick={() => props.setOpen(!props.open)}
+        className={segmentBtn}
+        aria-expanded={props.open}
+      >
+        {t("graph.filtersMenu")} <Chevron open={props.open} />
       </button>
       {props.open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => props.setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1 w-60 space-y-2 rounded-md border border-border bg-background p-3 shadow-md">
-            <label htmlFor="set-filter" className="block text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
-            <select id="set-filter" value={props.filterSet} onChange={(e) => props.setFilterSet(e.target.value)} className="w-full bg-background text-xs text-foreground outline-none">
-              <option value="">All sets</option>
-              {props.sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
-            </select>
-            <label htmlFor="kind-filter" className="block text-[10px] font-semibold uppercase text-muted-foreground">Node type</label>
-            <select id="kind-filter" value={props.filterKind} onChange={(e) => props.setFilterKind(e.target.value)} className="w-full bg-background text-xs text-foreground outline-none">
-              <option value="">All types</option>
-              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map((kind) => (
-                <option key={kind} value={kind}>{kind.replace(/^./, (letter) => letter.toUpperCase())}</option>
+            <label
+              htmlFor="set-filter"
+              className="block text-[10px] font-semibold uppercase text-muted-foreground"
+            >
+              {t("graph.setLabel")}
+            </label>
+            <select
+              id="set-filter"
+              value={props.filterSet}
+              onChange={(e) => props.setFilterSet(e.target.value)}
+              className="w-full bg-background text-xs text-foreground outline-none"
+            >
+              <option value="">{t("graph.allSets")}</option>
+              {props.sets.map((set) => (
+                <option key={set.id} value={set.id}>
+                  {set.name}
+                </option>
               ))}
+            </select>
+            <label
+              htmlFor="kind-filter"
+              className="block text-[10px] font-semibold uppercase text-muted-foreground"
+            >
+              {t("graph.nodeTypeLabel")}
+            </label>
+            <select
+              id="kind-filter"
+              value={props.filterKind}
+              onChange={(e) => props.setFilterKind(e.target.value)}
+              className="w-full bg-background text-xs text-foreground outline-none"
+            >
+              <option value="">{t("graph.allTypes")}</option>
+              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map(
+                (kind) => (
+                  <option key={kind} value={kind}>
+                    {kind.replace(/^./, (letter) => letter.toUpperCase())}
+                  </option>
+                ),
+              )}
             </select>
           </div>
         </>
