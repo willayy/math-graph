@@ -1,8 +1,15 @@
 import { Fragment, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 type Kind = "axiom" | "definition" | "conjecture" | "theorem" | "proof";
 type GraphItem = { id: string; name: string; kind: Kind };
@@ -32,7 +39,14 @@ async function fetchReview() {
 type Review = Awaited<ReturnType<typeof fetchReview>>;
 type Sub = Review["subs"][number];
 
-export function SubmissionsMenu({ userId, items, open, setOpen }: { userId: string | null; items: GraphItem[]; open: boolean; setOpen: (v: boolean) => void }) {
+export function SubmissionsMenu(props: {
+  userId: string | null;
+  items: GraphItem[];
+  open: boolean;
+  setOpen: (v: boolean) => void;
+}) {
+  const { userId, items, open, setOpen } = props;
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<null | { mode: "new" } | { mode: "view"; id: string }>(null);
   const { data } = useQuery({ queryKey: ["review"], queryFn: fetchReview });
@@ -51,7 +65,10 @@ export function SubmissionsMenu({ userId, items, open, setOpen }: { userId: stri
   const pending = (data?.subs ?? []).filter((s) => s.status === "pending");
   const mine = (data?.subs ?? []).filter((s) => s.author_id === userId);
   const others = pending.filter((s) => s.author_id !== userId);
-  const approvals = (id: string) => (data?.votes ?? []).filter((v) => v.submission_id === id && v.approve).length;
+  const approvals = (id: string) => {
+    const list = (data?.votes ?? []).filter((v) => v.submission_id === id && v.approve);
+    return list.length;
+  };
 
   const Row = ({ s }: { s: Sub }) => (
     <button
@@ -74,45 +91,113 @@ export function SubmissionsMenu({ userId, items, open, setOpen }: { userId: stri
         onClick={() => setOpen(!open)}
         className="relative z-30 flex flex-1 items-center justify-center gap-1 whitespace-nowrap px-3 py-2 text-center text-xs font-medium text-foreground transition-colors hover:bg-muted"
       >
-        <span>Submissions{others.length ? ` (${others.length})` : ""}</span>
-        <svg className={`h-3 w-3 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
+        <span>
+          {t("submissions.submissionsLabel")}
+          {others.length ? ` (${others.length})` : ""}
+        </span>
+        <svg
+          className={
+            `h-3 w-3 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`
+          }
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
       {open && (
         <div className="absolute right-0 top-full z-20 mt-1 w-full min-w-56 overflow-hidden rounded-md border border-border bg-background shadow-md">
           <div className="border-b border-border py-1">
             {academic ? (
-              <button onClick={() => { setOpen(false); setDialog({ mode: "new" }); }} className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted">
-                + Make submission
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  setDialog({ mode: "new" });
+                }}
+                className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+              >
+                {t("submissions.makeSubmission")}
               </button>
             ) : (
               <p className="px-3 py-1.5 text-[11px] leading-snug text-muted-foreground">
-                {userId ? "Submitting and reviewing need a confirmed university email." : (<><Link to="/auth" className="underline">Sign in</Link> with a university email to submit and review.</>)}
+                {userId ? (
+                  t("submissions.universityEmailRequired")
+                ) : (
+                  <>
+                    <Link to="/auth" className="underline">
+                      {t("submissions.signInLink")}
+                    </Link>{" "}
+                    {t("submissions.signInPrompt")}
+                  </>
+                )}
               </p>
             )}
           </div>
           {userId && (
             <>
-              <p className="px-3 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">My submissions</p>
+              <p
+                className={
+                  "px-3 pb-1 pt-2 text-[9px] font-semibold uppercase " +
+                  "tracking-widest text-muted-foreground"
+                }
+              >
+                {t("submissions.mySubmissions")}
+              </p>
               <div className="max-h-36 overflow-y-auto pb-1">
-                {mine.map((s) => <Row key={s.id} s={s} />)}
-                {!mine.length && <p className="px-3 py-1 text-xs text-muted-foreground">None yet.</p>}
+                {mine.map((s) => (
+                  <Row key={s.id} s={s} />
+                ))}
+                {!mine.length && (
+                  <p className="px-3 py-1 text-xs text-muted-foreground">
+                    {t("submissions.noneYet")}
+                  </p>
+                )}
               </div>
             </>
           )}
-          <p className="border-t border-border px-3 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">Pending review</p>
+          <p
+            className={
+              "border-t border-border px-3 pb-1 pt-2 text-[9px] font-semibold " +
+              "uppercase tracking-widest text-muted-foreground"
+            }
+          >
+            {t("submissions.pendingReview")}
+          </p>
           <div className="max-h-48 overflow-y-auto pb-1">
-            {others.map((s) => <Row key={s.id} s={s} />)}
-            {!others.length && <p className="px-3 py-1 text-xs text-muted-foreground">Nothing to review.</p>}
+            {others.map((s) => (
+              <Row key={s.id} s={s} />
+            ))}
+            {!others.length && (
+              <p className="px-3 py-1 text-xs text-muted-foreground">
+                {t("submissions.nothingToReview")}
+              </p>
+            )}
           </div>
         </div>
       )}
       <Dialog open={!!dialog} onOpenChange={(v) => !v && setDialog(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           {dialog?.mode === "new" && userId && (
-            <NewSubmission userId={userId} items={items} onDone={(id) => { refresh(); setDialog({ mode: "view", id }); }} />
+            <NewSubmission
+              userId={userId}
+              items={items}
+              onDone={(id) => {
+                refresh();
+                setDialog({ mode: "view", id });
+              }}
+            />
           )}
           {dialog?.mode === "view" && data && (
-            <SubmissionView id={dialog.id} data={data} items={items} userId={userId} academic={!!academic} onChange={refresh} />
+            <SubmissionView
+              id={dialog.id}
+              data={data}
+              items={items}
+              userId={userId}
+              academic={!!academic}
+              onChange={refresh}
+            />
           )}
         </DialogContent>
       </Dialog>
