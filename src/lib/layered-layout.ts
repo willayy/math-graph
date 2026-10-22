@@ -237,12 +237,46 @@ function layoutOnce(
   return { positions, routes, crossings: bestScore };
 }
 
-// Deterministic left-to-right layout. Runs both dummy-lane routings and keeps
-// the one with fewer drawn crossings (ties keep the source-band routing), so
-// long edges between sets pick the side that tangles less.
+// Deterministic left-to-right layout. Long edges that cross set bands can
+// jump bands at either end; greedily pick each edge's side (in id order,
+// keeping flips that strictly reduce crossings) so the result tangles as
+// little as the banded structure allows.
 export function layeredLayout(nodes: LayoutNode[], edges: LayoutEdge[], setRank: (set: string | null) => number): LayeredResult {
-  const fromSource = layoutOnce(nodes, edges, setRank, "source");
-  if (fromSource.crossings === 0) return fromSource;
-  const fromTarget = layoutOnce(nodes, edges, setRank, "target");
-  return fromTarget.crossings < fromSource.crossings ? fromTarget : fromSource;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const layerOf = (() => {
+    // Reuse a cheap longest-path pass to find edges spanning a column.
+    const incoming = new Map<string, string[]>();
+    for (const e of edges) if (byId.has(e.source) && byId.has(e.target)) incoming.set(e.target, [...(incoming.get(e.target) ?? []), e.source]);
+    const layer = new Map<string, number>();
+    const visit = (id: string, stack: Set<string>): number => {
+      const known = layer.get(id);
+      if (known !== undefined) return known;
+      if (stack.has(id)) return 0;
+      stack.add(id);
+      const deps = incoming.get(id) ?? [];
+      const value = deps.length ? 1 + Math.max(...deps.map((d) => visit(d, stack))) : FOUNDATION.has(byId.get(id)!.kind) ? 0 : 1;
+      stack.delete(id);
+      layer.set(id, value);
+      return value;
+    };
+    nodes.forEach((n) => visit(n.id, new Set()));
+    return layer;
+  })();
+  const longEdges = edges
+    .filter((e) => byId.has(e.source) && byId.has(e.target) && layerOf.get(e.target)! > layerOf.get(e.source)! + 1)
+    .map((e) => e.id)
+    .sort();
+  const bands = new Map<string, "source" | "target">(longEdges.map((id) => [id, "source"]));
+  let best = layoutOnce(nodes, edges, setRank, bands);
+  for (let sweep = 0; sweep < 4 && best.crossings > 0; sweep++) {
+    let improved = false;
+    for (const id of longEdges) {
+      bands.set(id, bands.get(id) === "source" ? "target" : "source");
+      const candidate = layoutOnce(nodes, edges, setRank, bands);
+      if (candidate.crossings < best.crossings) { best = candidate; improved = true; }
+      else bands.set(id, bands.get(id) === "source" ? "target" : "source");
+    }
+    if (!improved) break;
+  }
+  return best;
 }
