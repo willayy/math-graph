@@ -773,23 +773,26 @@ function CollectionsMenu(props: {
   onDelete: () => void;
 }) {
   const { open, setOpen, collections, activeId, activeName, showOnly } = props;
+  const { t } = useTranslation();
   return (
     <div className="relative flex flex-1">
       <button onClick={() => setOpen(!open)} className={`${segmentBtn} rounded-r-xl`}>
-        <span className="max-w-24 truncate">{activeName ?? "Collections"}</span>
+        <span className="max-w-24 truncate">{activeName ?? t("graph.collectionsMenu")}</span>
         <Chevron open={open} />
       </button>
       {open && (
         <div className="absolute right-0 top-full z-20 mt-1 w-full min-w-52 overflow-hidden rounded-md border border-border bg-background shadow-md">
           <p className="border-b border-border px-3 pb-1.5 pt-2.5 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Collections
+            {t("graph.collectionsMenu")}
           </p>
           <div className="max-h-48 overflow-y-auto py-1">
             <button
               onClick={() => props.onSelect("")}
               className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-muted"
             >
-              <span className={activeId ? "text-muted-foreground" : "font-medium"}>No collection</span>
+              <span className={activeId ? "text-muted-foreground" : "font-medium"}>
+                {t("graph.noCollection")}
+              </span>
               {!activeId && <CheckIcon />}
             </button>
             {collections.map((c) => (
@@ -798,7 +801,9 @@ function CollectionsMenu(props: {
                 onClick={() => props.onSelect(c.id)}
                 className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
               >
-                <span className={`truncate ${c.id === activeId ? "font-medium" : ""}`}>{c.name}</span>
+                <span className={`truncate ${c.id === activeId ? "font-medium" : ""}`}>
+                  {c.name}
+                </span>
                 <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
                   {c.ids.length}
                   {c.id === activeId && <CheckIcon />}
@@ -806,7 +811,9 @@ function CollectionsMenu(props: {
               </button>
             ))}
             {collections.length === 0 && (
-              <p className="px-3 py-1.5 text-xs text-muted-foreground">No collections yet.</p>
+              <p className="px-3 py-1.5 text-xs text-muted-foreground">
+                {t("graph.noCollectionsYet")}
+              </p>
             )}
           </div>
           <div className="border-t border-border py-1">
@@ -814,7 +821,7 @@ function CollectionsMenu(props: {
               onClick={props.onNew}
               className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
             >
-              + New collection
+              {t("graph.newCollection")}
             </button>
             {activeId && (
               <>
@@ -822,13 +829,13 @@ function CollectionsMenu(props: {
                   onClick={props.onToggleShowOnly}
                   className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
                 >
-                  {showOnly ? "Show all nodes" : "Show only this collection"}
+                  {showOnly ? t("graph.showAllNodes") : t("graph.showOnlyCollection")}
                 </button>
                 <button
                   onClick={props.onDelete}
                   className="w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted"
                 >
-                  Delete collection
+                  {t("graph.deleteCollection")}
                 </button>
               </>
             )}
