@@ -27,7 +27,15 @@ const FOUNDATION = new Set(["axiom", "definition"]);
 
 type Slot = { id: string; layer: number; band: number; height: number; width: number; dummy: boolean };
 
-export function layeredLayout(nodes: LayoutNode[], edges: LayoutEdge[], setRank: (set: string | null) => number): LayeredResult {
+// One full layout pass. Long edges reserve a dummy lane in every column they
+// span; dummyBand chooses whether those lanes sit in the source's set band
+// (vertical jump at the target end) or the target's band (jump at the start).
+function layoutOnce(
+  nodes: LayoutNode[],
+  edges: LayoutEdge[],
+  setRank: (set: string | null) => number,
+  dummyBand: "source" | "target",
+): LayeredResult {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const valid = edges.filter((e) => byId.has(e.source) && byId.has(e.target) && e.source !== e.target);
   const incoming = new Map<string, string[]>();
