@@ -425,28 +425,61 @@ function SubmissionView(props: {
   async function vote(approve: boolean) {
     setMsg(null);
     const { error } = myVote
-      ? await supabase.from("submission_votes").update({ approve }).eq("submission_id", id).eq("voter_id", userId!)
-      : await supabase.from("submission_votes").insert({ submission_id: id, voter_id: userId!, approve });
-    if (error) return setMsg(error.message);
+      ? await supabase
+          .from("submission_votes")
+          .update({ approve })
+          .eq("submission_id", id)
+          .eq("voter_id", userId!)
+      : await supabase
+          .from("submission_votes")
+          .insert({ submission_id: id, voter_id: userId!, approve });
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
     const { data: res } = await supabase.rpc("publish_if_approved", { _sid: id });
-    if (res === "published") setMsg("Approved by enough reviewers — it's now in the graph.");
+    if (res === "published") {
+      setMsg(t("submissions.approvedBanner"));
+    }
     onChange();
   }
+
   async function comment(e: React.FormEvent) {
     e.preventDefault();
-    const { error } = await supabase.from("submission_comments").insert({ submission_id: id, author_id: userId!, body: body.trim(), suggested_statement: showSuggest && suggest.trim() ? suggest.trim() : null });
-    if (error) return setMsg(error.message);
-    setBody(""); setSuggest(""); setShowSuggest(false);
+    const trimmedBody = body.trim();
+    const trimmedSuggest = suggest.trim();
+    const suggestedStatement = showSuggest && trimmedSuggest ? trimmedSuggest : null;
+    const { error } = await supabase.from("submission_comments").insert({
+      submission_id: id,
+      author_id: userId!,
+      body: trimmedBody,
+      suggested_statement: suggestedStatement,
+    });
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+    setBody("");
+    setSuggest("");
+    setShowSuggest(false);
     onChange();
   }
+
   async function applySuggestion(text: string) {
     const { error } = await supabase.from("submissions").update({ statement: text }).eq("id", id);
-    if (error) return setMsg(error.message);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
     onChange();
   }
+
   async function withdraw() {
     const { error } = await supabase.from("submissions").update({ status: "withdrawn" }).eq("id", id);
-    if (error) return setMsg(error.message);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
     onChange();
   }
 
@@ -455,58 +488,147 @@ function SubmissionView(props: {
       <DialogHeader>
         <DialogTitle>{s.name}</DialogTitle>
         <DialogDescription>
-          <span className="capitalize">{s.kind}</span> submitted by <strong className="text-foreground">{name(s.author_id)}</strong> · {s.status === "pending" ? `${votes.filter((v) => v.approve).length}/${NEEDED} approvals` : s.status}
+          <span className="capitalize">{s.kind}</span> {t("submissions.submittedBy")}{" "}
+          <strong className="text-foreground">{name(s.author_id)}</strong> ·{" "}
+          {s.status === "pending"
+            ? t("submissions.approvalsCount", {
+                count: votes.filter((v) => v.approve).length,
+                needed: NEEDED,
+              })
+            : s.status}
         </DialogDescription>
       </DialogHeader>
       <p className="whitespace-pre-wrap rounded-md bg-muted p-3">{s.statement}</p>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-        {s.creator && (<><dt className="text-muted-foreground">Creator</dt><dd>{s.creator}</dd></>)}
-        {s.date && (<><dt className="text-muted-foreground">Date</dt><dd>{s.date}</dd></>)}
-        {s.citation && (<><dt className="text-muted-foreground">Citation</dt><dd>{s.citation}</dd></>)}
-        {links.map((l) => (<Fragment key={l.id}><dt className="text-muted-foreground">{l.relation === "uses" ? "Uses" : "Proof of"}</dt><dd>{items.find((i) => i.id === l.target_id)?.name ?? "?"}</dd></Fragment>))}
+        {s.creator && (
+          <>
+            <dt className="text-muted-foreground">{t("common.creator")}</dt>
+            <dd>{s.creator}</dd>
+          </>
+        )}
+        {s.date && (
+          <>
+            <dt className="text-muted-foreground">{t("common.date")}</dt>
+            <dd>{s.date}</dd>
+          </>
+        )}
+        {s.citation && (
+          <>
+            <dt className="text-muted-foreground">{t("common.citation")}</dt>
+            <dd>{s.citation}</dd>
+          </>
+        )}
+        {links.map((l) => (
+          <Fragment key={l.id}>
+            <dt className="text-muted-foreground">
+              {l.relation === "uses" ? t("submissions.uses") : t("submissions.proofOf")}
+            </dt>
+            <dd>{items.find((i) => i.id === l.target_id)?.name ?? "?"}</dd>
+          </Fragment>
+        ))}
       </dl>
       {votes.length > 0 && (
         <div className="text-xs">
-          <p className="mb-1 font-medium">Votes</p>
-          {votes.map((v) => <p key={v.voter_id}>{v.approve ? "✓" : "✗"} {name(v.voter_id)}</p>)}
+          <p className="mb-1 font-medium">{t("submissions.votesHeading")}</p>
+          {votes.map((v) => (
+            <p key={v.voter_id}>
+              {v.approve ? "✓" : "✗"} {name(v.voter_id)}
+            </p>
+          ))}
         </div>
       )}
       {canReview && (
         <div className="flex gap-2">
-          <button onClick={() => vote(true)} className={`flex-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted ${myVote?.approve === true ? "bg-muted font-semibold" : ""}`}>Approve</button>
-          <button onClick={() => vote(false)} className={`flex-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted ${myVote?.approve === false ? "bg-muted font-semibold" : ""}`}>Reject</button>
+          <button
+            onClick={() => vote(true)}
+            className={`flex-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted ${
+              myVote?.approve === true ? "bg-muted font-semibold" : ""
+            }`}
+          >
+            {t("submissions.approve")}
+          </button>
+          <button
+            onClick={() => vote(false)}
+            className={`flex-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted ${
+              myVote?.approve === false ? "bg-muted font-semibold" : ""
+            }`}
+          >
+            {t("submissions.reject")}
+          </button>
         </div>
       )}
       {isAuthor && s.status === "pending" && (
-        <button onClick={withdraw} className="text-xs text-destructive underline">Withdraw submission</button>
+        <button onClick={withdraw} className="text-xs text-destructive underline">
+          {t("submissions.withdrawSubmission")}
+        </button>
       )}
       <div className="space-y-2">
-        <p className="text-xs font-medium">Discussion</p>
+        <p className="text-xs font-medium">{t("submissions.discussionHeading")}</p>
         {comments.map((c) => (
           <div key={c.id} className="rounded-md border border-border p-2 text-xs">
-            <p className="mb-1 text-muted-foreground"><strong className="text-foreground">{name(c.author_id)}</strong> · {new Date(c.created_at).toLocaleString()}</p>
+            <p className="mb-1 text-muted-foreground">
+              <strong className="text-foreground">{name(c.author_id)}</strong> ·{" "}
+              {new Date(c.created_at).toLocaleString()}
+            </p>
             <p className="whitespace-pre-wrap">{c.body}</p>
             {c.suggested_statement && (
               <div className="mt-2 rounded bg-muted p-2">
-                <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">Suggested statement</p>
+                <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {t("submissions.suggestedStatement")}
+                </p>
                 <p className="whitespace-pre-wrap">{c.suggested_statement}</p>
                 {isAuthor && s.status === "pending" && c.suggested_statement !== s.statement && (
-                  <button onClick={() => applySuggestion(c.suggested_statement!)} className="mt-1 underline">Accept this edit</button>
+                  <button
+                    onClick={() => applySuggestion(c.suggested_statement!)}
+                    className="mt-1 underline"
+                  >
+                    {t("submissions.acceptThisEdit")}
+                  </button>
                 )}
               </div>
             )}
           </div>
         ))}
-        {!comments.length && <p className="text-xs text-muted-foreground">No comments yet.</p>}
+        {!comments.length && (
+          <p className="text-xs text-muted-foreground">{t("submissions.noComments")}</p>
+        )}
         {academic && s.status === "pending" && (
           <form onSubmit={comment} className="space-y-2">
-            <textarea required rows={2} placeholder="Comment" value={body} onChange={(e) => setBody(e.target.value)} className={field} />
+            <textarea
+              required
+              rows={2}
+              placeholder={t("submissions.commentPlaceholder")}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              className={field}
+            />
             {showSuggest ? (
-              <textarea rows={3} placeholder="Suggested statement" value={suggest} onChange={(e) => setSuggest(e.target.value)} className={field} />
+              <textarea
+                rows={3}
+                placeholder={t("submissions.suggestedStatement")}
+                value={suggest}
+                onChange={(e) => setSuggest(e.target.value)}
+                className={field}
+              />
             ) : (
-              <button type="button" onClick={() => { setShowSuggest(true); setSuggest(s.statement); }} className="text-xs underline">Suggest an edit to the statement</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSuggest(true);
+                  setSuggest(s.statement);
+                }}
+                className="text-xs underline"
+              >
+                {t("submissions.suggestEditButton")}
+              </button>
             )}
-            <button className="w-full rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted">Post</button>
+            <button
+              className={
+                "w-full rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted"
+              }
+            >
+              {t("submissions.postComment")}
+            </button>
           </form>
         )}
       </div>
