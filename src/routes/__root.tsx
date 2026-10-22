@@ -104,8 +104,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const { i18n } = useTranslation();
   return (
-    <html lang="en">
+    <html lang={i18n.language}>
       <head>
         <HeadContent />
       </head>
