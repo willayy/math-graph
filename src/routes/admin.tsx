@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { listVerifications, decideVerification } from "@/lib/verification.functions";
 
@@ -20,55 +21,96 @@ export const Route = createFileRoute("/admin")({
 type Item = Awaited<ReturnType<typeof listVerifications>>[number];
 
 function AdminPage() {
+  const { t } = useTranslation();
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   async function load() {
     const { data } = await supabase.auth.getUser();
-    if (!data.user) { setError("Sign in as an admin to see the queue."); return; }
-    try { setItems(await listVerifications()); setError(null); }
-    catch (e) { setError(e instanceof Error ? e.message : "Could not load the queue."); }
+    if (!data.user) {
+      setError(t("admin.signInRequired"));
+      return;
+    }
+    try {
+      const list = await listVerifications();
+      setItems(list);
+      setError(null);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : t("admin.loadError");
+      setError(message);
+    }
   }
-  useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    void load();
+  }, []);
 
   async function decide(userId: string, approve: boolean) {
-    await decideVerification({ data: { userId, approve, note: notes[userId] || undefined } });
+    const note = notes[userId] || undefined;
+    await decideVerification({ data: { userId, approve, note } });
     await load();
   }
 
   return (
     <main className="mx-auto max-w-4xl space-y-4 bg-background p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Identity review queue</h1>
-        <Link to="/" className="text-xs text-muted-foreground underline">Back to graph</Link>
+        <h1 className="text-lg font-semibold text-foreground">{t("admin.heading")}</h1>
+        <Link to="/" className="text-xs text-muted-foreground underline">
+          {t("common.backToGraph")}
+        </Link>
       </div>
       {error && <p className="text-sm text-muted-foreground">{error}</p>}
-      {items && items.length === 0 && <p className="text-sm text-muted-foreground">Nothing waiting for review.</p>}
+      {items && items.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t("admin.emptyQueue")}</p>
+      )}
       {items?.map((it) => (
         <section key={it.userId} className="space-y-3 rounded-lg border border-border p-4">
           <div className="text-sm text-foreground">
-            <strong>{it.fullName || "(no name)"}</strong> · {it.email} · student ID {it.studentId}
+            <strong>{it.fullName || `(${t("common.unknown")})`}</strong> · {it.email} ·{" "}
+            {t("admin.studentId")} {it.studentId}
           </div>
           <div className="text-xs text-muted-foreground">
-            AI confidence: {it.confidence === null ? "n/a" : `${Math.round(it.confidence * 100)}%`} — {it.summary}
+            {t("admin.aiConfidence")}:{" "}
+            {it.confidence === null
+              ? "n/a"
+              : `${Math.round(it.confidence * 100)}%`} — {it.summary}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <a href={it.studentCardUrl} target="_blank" rel="noreferrer">
-              <img src={it.studentCardUrl} alt="Student ID card" className="w-full rounded border border-border" />
+              <img
+                src={it.studentCardUrl}
+                alt={t("admin.studentIdCardAlt")}
+                className="w-full rounded border border-border"
+              />
             </a>
             <a href={it.idCardUrl} target="_blank" rel="noreferrer">
-              <img src={it.idCardUrl} alt="Government ID" className="w-full rounded border border-border" />
+              <img
+                src={it.idCardUrl}
+                alt={t("admin.governmentIdAlt")}
+                className="w-full rounded border border-border"
+              />
             </a>
           </div>
-          <input placeholder="Note to the user (optional)" value={notes[it.userId] ?? ""}
+          <input
+            placeholder={t("admin.notePlaceholder")}
+            value={notes[it.userId] ?? ""}
             onChange={(e) => setNotes({ ...notes, [it.userId]: e.target.value })}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
           <div className="flex gap-2">
-            <button onClick={() => decide(it.userId, true)}
-              className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground">Approve</button>
-            <button onClick={() => decide(it.userId, false)}
-              className="rounded-md border border-border px-3 py-1.5 text-sm">Reject</button>
+            <button
+              onClick={() => decide(it.userId, true)}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground"
+            >
+              {t("admin.approve")}
+            </button>
+            <button
+              onClick={() => decide(it.userId, false)}
+              className="rounded-md border border-border px-3 py-1.5 text-sm"
+            >
+              {t("admin.reject")}
+            </button>
           </div>
         </section>
       ))}
