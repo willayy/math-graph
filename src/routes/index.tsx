@@ -710,27 +710,44 @@ function FiltersMenu(props: {
 
 // Pages dropdown: links to the change history and about pages.
 function PagesMenu({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="relative flex flex-1">
       <button onClick={() => setOpen(!open)} className={segmentBtn}>
-        Pages <Chevron open={open} />
+        {t("graph.pagesMenu")} <Chevron open={open} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-md border border-border bg-background shadow-md">
             <div className="py-1">
-              <Link to="/history" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
-                Change history
+              <Link
+                to="/history"
+                className="block px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => setOpen(false)}
+              >
+                {t("graph.historyLink")}
               </Link>
-              <Link to="/about" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
-                About
+              <Link
+                to="/about"
+                className="block px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => setOpen(false)}
+              >
+                {t("graph.aboutLink")}
               </Link>
-              <Link to="/verify" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
-                Verify identity
+              <Link
+                to="/verify"
+                className="block px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => setOpen(false)}
+              >
+                {t("graph.verifyLink")}
               </Link>
-              <Link to="/admin" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
-                Admin review queue
+              <Link
+                to="/admin"
+                className="block px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => setOpen(false)}
+              >
+                {t("graph.adminLink")}
               </Link>
             </div>
           </div>
