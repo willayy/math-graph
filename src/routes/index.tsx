@@ -25,7 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { SubmissionsMenu } from "@/components/SubmissionsMenu";
 import { renderLatex } from "@/lib/latex.functions";
 import { Bookmark, Pin } from "lucide-react";
-import defaultGraphLayout from "@/lib/default-graph-layout.json";
+import { layeredLayout, type LayeredResult } from "@/lib/layered-layout";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -76,8 +76,6 @@ type CardData = {
 type Collection = { id: string; name: string; ids: string[] };
 
 const NODE_W = 260;
-const COL_GAP = 120;
-const ROW_GAP = 40;
 const NODE_H = 155;
 
 async function fetchGraph() {
@@ -290,86 +288,6 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const nodeWidth = (node: Node<CardData>) => node.measured?.width ?? (node.data.expanded ? 340 : NODE_W);
 const nodeHeight = (node: Node<CardData>) => node.measured?.height ?? NODE_H;
 
-// Use the same anchors and Bezier controls as the rendered edge when checking
-// whether another card occupies its buffered path.
-function edgePoints(source: Node<CardData>, target: Node<CardData>) {
-  const center = (n: Node<CardData>) => ({ x: n.position.x + nodeWidth(n) / 2, y: n.position.y + nodeHeight(n) / 2 });
-  const a = center(source), b = center(target);
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const bound = (n: Node<CardData>, c: typeof a, vx: number, vy: number) => {
-    const scale = Math.min(vx ? nodeWidth(n) / 2 / Math.abs(vx) : Infinity, vy ? nodeHeight(n) / 2 / Math.abs(vy) : Infinity);
-    return { x: c.x + vx * scale, y: c.y + vy * scale };
-  };
-  if (!dx && !dy) return [];
-  const start = bound(source, a, dx, dy), end = bound(target, b, -dx, -dy);
-  const horizontal = Math.abs(dx) >= Math.abs(dy);
-  const offset = (distance: number) => distance >= 0 ? distance / 2 : 6.25 * Math.sqrt(-distance);
-  const distance = horizontal ? end.x - start.x : end.y - start.y;
-  const direction = horizontal ? Math.sign(dx) : Math.sign(dy);
-  const control = offset(distance * direction) * direction;
-  const c1 = { x: start.x + (horizontal ? control : 0), y: start.y + (horizontal ? 0 : control) };
-  const c2 = { x: end.x - (horizontal ? control : 0), y: end.y - (horizontal ? 0 : control) };
-  return Array.from({ length: 17 }, (_, i) => {
-    const t = i / 16, s = 1 - t;
-    return {
-      x: s ** 3 * start.x + 3 * s ** 2 * t * c1.x + 3 * s * t ** 2 * c2.x + t ** 3 * end.x,
-      y: s ** 3 * start.y + 3 * s ** 2 * t * c1.y + 3 * s * t ** 2 * c2.y + t ** 3 * end.y,
-    };
-  });
-}
-
-function clearEdgeCorridors(nodes: Node<CardData>[], edges: SimEdge[], pinned: Set<string>) {
-  const next = [...nodes];
-  const byId = new Map(next.map((n, i) => [n.id, i]));
-  let moved = false;
-  for (let pass = 0; pass < 16; pass++) {
-    let changed = false;
-    for (const edge of edges) {
-      const si = byId.get(edge.source), ti = byId.get(edge.target);
-      if (si === undefined || ti === undefined) continue;
-      const points = edgePoints(next[si]!, next[ti]!);
-      if (!points.length) continue;
-      for (let i = 0; i < next.length; i++) {
-        if (i === si || i === ti) continue;
-        const node = next[i]!;
-        const cx = node.position.x + nodeWidth(node) / 2;
-        const cy = node.position.y + nodeHeight(node) / 2;
-        let best: { x: number; y: number; distance: number; need: number } | null = null;
-        for (let j = 1; j < points.length; j++) {
-          const a = points[j - 1]!, b = points[j]!;
-          const vx = b.x - a.x, vy = b.y - a.y;
-          const u = Math.max(0, Math.min(1, ((cx - a.x) * vx + (cy - a.y) * vy) / (vx * vx + vy * vy || 1)));
-          const px = a.x + u * vx, py = a.y + u * vy;
-          let nx = cx - px, ny = cy - py;
-          let distance = Math.hypot(nx, ny);
-          if (distance < 0.01) { nx = -vy; ny = vx; distance = Math.hypot(nx, ny) || 1; }
-          nx /= distance; ny /= distance;
-          const need = Math.abs(nx) * nodeWidth(node) / 2 + Math.abs(ny) * nodeHeight(node) / 2 + EDGE_BUFFER;
-          if (!best || distance < best.distance) best = { x: nx, y: ny, distance, need };
-        }
-        if (!best || best.distance >= best.need - 0.5) continue;
-        const push = best.need - best.distance + 1;
-        const movable = !node.dragging && !pinned.has(node.id);
-        if (movable) {
-          next[i] = { ...node, position: { x: node.position.x + best.x * push, y: node.position.y + best.y * push } };
-          changed = true;
-          moved = true;
-        } else {
-          // A pinned or dragged obstruction stays put; move the line's endpoints instead.
-          for (const endpoint of [si, ti]) {
-            const other = next[endpoint]!;
-            if (other.dragging || pinned.has(other.id)) continue;
-            next[endpoint] = { ...other, position: { x: other.position.x - best.x * push, y: other.position.y - best.y * push } };
-            changed = true;
-            moved = true;
-          }
-        }
-      }
-    }
-    if (!changed) break;
-  }
-  return moved ? next : nodes;
-}
 
 // A convex outline follows the actual member boxes instead of enclosing unrelated
 // nodes in a large rectangular bounding box.
@@ -390,79 +308,6 @@ function setHull(points: { x: number; y: number }[]) {
   return lower.slice(0, -1).concat(upper.slice(0, -1));
 }
 
-// Move the smaller, freely movable set as a unit only when two padded hulls
-// actually intersect. This preserves the spacing inside each set and leaves
-// saved layouts untouched when their outlines are already separate.
-function separateSetOutlines(
-  nodes: Node<CardData>[],
-  members: { set_id: string; element_id: string }[],
-  pinned: Set<string>,
-) {
-  const groups = new Map<string, Set<string>>();
-  for (const { set_id, element_id } of members) {
-    if (!groups.has(set_id)) groups.set(set_id, new Set());
-    groups.get(set_id)?.add(element_id);
-  }
-  const hullFor = (ids: Set<string>, list: Node<CardData>[]) => setHull(list.flatMap((node) => {
-    if (!ids.has(node.id)) return [];
-    const { x, y } = node.position;
-    const right = x + nodeWidth(node) + SET_MARGIN;
-    const bottom = y + nodeHeight(node) + SET_MARGIN;
-    return [
-      { x: x - SET_MARGIN, y: y - SET_MARGIN }, { x: right, y: y - SET_MARGIN },
-      { x: right, y: bottom }, { x: x - SET_MARGIN, y: bottom },
-    ];
-  }));
-  const entries = [...groups.entries()];
-  let result = nodes;
-  for (let pass = 0; pass < entries.length; pass++) {
-    let moved = false;
-    for (let i = 0; i < entries.length; i++) for (let j = i + 1; j < entries.length; j++) {
-      const [aId, a] = entries[i]!;
-      const [bId, b] = entries[j]!;
-      const aHull = hullFor(a, result), bHull = hullFor(b, result);
-      if (aHull.length < 3 || bHull.length < 3) continue;
-      const axes = [aHull, bHull].flatMap((hull) => hull.map((point, k) => {
-        const next = hull[(k + 1) % hull.length]!;
-        const dx = next.x - point.x, dy = next.y - point.y;
-        const length = Math.hypot(dx, dy) || 1;
-        return { x: -dy / length, y: dx / length };
-      }));
-      let separation: { x: number; y: number; distance: number } | null = null;
-      let intersects = true;
-      for (const axis of axes) {
-        const projection = (hull: typeof aHull) => {
-          const values = hull.map((point) => point.x * axis.x + point.y * axis.y);
-          return { min: Math.min(...values), max: Math.max(...values) };
-        };
-        const pa = projection(aHull), pb = projection(bHull);
-        const forward = pa.max - pb.min, backward = pb.max - pa.min;
-        if (forward <= 0 || backward <= 0) { intersects = false; break; }
-        const distance = Math.min(forward, backward);
-        if (!separation || distance < separation.distance)
-          separation = { x: axis.x * (forward <= backward ? 1 : -1), y: axis.y * (forward <= backward ? 1 : -1), distance };
-      }
-      if (!intersects || !separation) continue;
-      const movable = (ids: Set<string>, other: Set<string>) =>
-        [...ids].every((id) => !pinned.has(id) && !other.has(id));
-      const candidates = [
-        { id: aId, ids: a, sign: -1, allowed: movable(a, b) },
-        { id: bId, ids: b, sign: 1, allowed: movable(b, a) },
-      ].filter((candidate) => candidate.allowed).sort((left, right) => left.ids.size - right.ids.size);
-      const choice = candidates[0];
-      if (!choice) continue;
-      const { x, y, distance } = separation;
-      result = result.map((node) => choice.ids.has(node.id) ? {
-        ...node,
-        position: { x: node.position.x + x * (distance + 12) * choice.sign,
-          y: node.position.y + y * (distance + 12) * choice.sign },
-      } : node);
-      moved = true;
-    }
-    if (!moved) break;
-  }
-  return result;
-}
 
 function SetOutlines({
   nodes,
@@ -537,10 +382,12 @@ function SetOutlines({
   );
 }
 
-// Floating edge: the connection points are recomputed from the nodes' current
-// rectangles on every render, so each line leaves the box on the side facing
-// the other box (and arrowheads stay glued to the boxes, never mid-bend).
-function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style }: EdgeProps) {
+// Floating edge. When the layered layout has routed this edge through dummy
+// lanes (and both endpoints are still where the layout put them), the line
+// follows those lanes: horizontal runs with smooth vertical connectors, so
+// every edge flows strictly left to right and never cuts through a column.
+// Otherwise it falls back to a direct curve between the two boxes.
+function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style, data }: EdgeProps) {
   const sn = useInternalNode(source);
   const tn = useInternalNode(target);
   if (!sn || !tn) return null;
@@ -548,26 +395,51 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
   const h = (n: typeof sn | typeof tn) => n.measured?.height ?? NODE_H;
   const sc = { x: sn.internals.positionAbsolute.x + w(sn) / 2, y: sn.internals.positionAbsolute.y + h(sn) / 2 };
   const tc = { x: tn.internals.positionAbsolute.x + w(tn) / 2, y: tn.internals.positionAbsolute.y + h(tn) / 2 };
-  const dx = tc.x - sc.x;
-  const dy = tc.y - sc.y;
-  // Point where the ray from a box center toward the other exits its rectangle
-  const bound = (cx: number, cy: number, bw: number, bh: number, vx: number, vy: number) => {
-    if (vx === 0 && vy === 0) return { x: cx, y: cy };
-    const s = Math.min(vx === 0 ? Infinity : bw / 2 / Math.abs(vx), vy === 0 ? Infinity : bh / 2 / Math.abs(vy));
-    return { x: cx + vx * s, y: cy + vy * s };
-  };
-  const p1 = bound(sc.x, sc.y, w(sn), h(sn), dx, dy);
-  const p2 = bound(tc.x, tc.y, w(tn), h(tn), -dx, -dy);
-  // Bezier control direction follows the dominant axis so the curve starts flat
-  const horiz = Math.abs(dx) >= Math.abs(dy);
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX: p1.x,
-    sourceY: p1.y,
-    sourcePosition: horiz ? (dx >= 0 ? Position.Right : Position.Left) : dy >= 0 ? Position.Bottom : Position.Top,
-    targetX: p2.x,
-    targetY: p2.y,
-    targetPosition: horiz ? (dx >= 0 ? Position.Left : Position.Right) : dy >= 0 ? Position.Top : Position.Bottom,
-  });
+  type RouteData = { route?: { x: number; y: number }[]; routeFrom?: { x: number; y: number }; routeTo?: { x: number; y: number } };
+  const rd = (data ?? {}) as RouteData;
+  const near = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y) < 2;
+  // Positions (top-left corners) must still match the layout; dragging a box
+  // releases the edge back to a direct curve.
+  const routed =
+    !!rd.route?.length && !!rd.routeFrom && !!rd.routeTo &&
+    near(rd.routeFrom, sn.internals.positionAbsolute) && near(rd.routeTo, tn.internals.positionAbsolute);
+
+  let path: string;
+  let labelX: number, labelY: number;
+  if (routed) {
+    const pts = [{ x: sc.x + w(sn) / 2, y: sc.y }, ...rd.route!, { x: tc.x - w(tn) / 2, y: tc.y }];
+    const seg = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      Math.abs(b.y - a.y) < 0.5
+        ? `L ${b.x} ${b.y}`
+        : `C ${a.x + (b.x - a.x) / 2} ${a.y}, ${b.x - (b.x - a.x) / 2} ${b.y}, ${b.x} ${b.y}`;
+    path = `M ${pts[0]!.x} ${pts[0]!.y} ` + pts.slice(1).map((p, i) => seg(pts[i]!, p)).join(" ");
+    const mid = pts[Math.floor((pts.length - 1) / 2)]!;
+    [labelX, labelY] = [mid.x, mid.y];
+  } else {
+    const dx = tc.x - sc.x;
+    const dy = tc.y - sc.y;
+    // Point where the ray from a box center toward the other exits its rectangle
+    const bound = (cx: number, cy: number, bw: number, bh: number, vx: number, vy: number) => {
+      if (vx === 0 && vy === 0) return { x: cx, y: cy };
+      const s = Math.min(vx === 0 ? Infinity : bw / 2 / Math.abs(vx), vy === 0 ? Infinity : bh / 2 / Math.abs(vy));
+      return { x: cx + vx * s, y: cy + vy * s };
+    };
+    const p1 = bound(sc.x, sc.y, w(sn), h(sn), dx, dy);
+    const p2 = bound(tc.x, tc.y, w(tn), h(tn), -dx, -dy);
+    // Flow left to right when the boxes are side by side; otherwise curve vertically
+    const horiz = Math.abs(dx) >= Math.abs(dy);
+    const [p, lx, ly] = getBezierPath({
+      sourceX: p1.x,
+      sourceY: p1.y,
+      sourcePosition: horiz ? (dx >= 0 ? Position.Right : Position.Left) : dy >= 0 ? Position.Bottom : Position.Top,
+      targetX: p2.x,
+      targetY: p2.y,
+      targetPosition: horiz ? (dx >= 0 ? Position.Left : Position.Right) : dy >= 0 ? Position.Top : Position.Bottom,
+    });
+    path = p;
+    labelX = lx;
+    labelY = ly;
+  }
   const text = typeof label === "string" ? label : undefined;
   const tw = text ? text.length * 6 + 10 : 0;
   return (
@@ -908,78 +780,12 @@ function buildGraph(
   }
   const toGroups = (g?: Map<string, string[]>): RelationGroup[] | undefined =>
     g ? [...g.entries()].map(([label, items]) => ({ label, items })) : undefined;
-  // Depth = longest chain back to foundations
-  const depth = new Map<string, number>();
-  const visit = (id: string, stack = new Set<string>()): number => {
-    if (depth.has(id)) return depth.get(id)!;
-    if (stack.has(id)) return 0;
-    stack.add(id);
-    const it = byId.get(id)!;
-    let d = 0;
-    if (it.kind === "theorem") {
-      const ds = deps.get(id) ?? [];
-      d = ds.length ? 1 + Math.max(...ds.map((x) => visit(x, stack))) : 1;
-    } else if (it.kind === "proof" && it.theorem_id && byId.has(it.theorem_id)) {
-      d = visit(it.theorem_id, stack) + 1;
-    }
-    depth.set(id, d);
-    return d;
-  };
-  items.forEach((i) => visit(i.id));
-
-  const cols = new Map<number, Item[]>();
-  for (const i of items) {
-    const d = depth.get(i.id)!;
-    cols.set(d, [...(cols.get(d) ?? []), i]);
-  }
-
-  // Adjacency across adjacent columns (both directions) for crossing reduction
-  const neighbors = new Map<string, string[]>();
-  const link = (a: string, b: string) => {
-    neighbors.set(a, [...(neighbors.get(a) ?? []), b]);
-    neighbors.set(b, [...(neighbors.get(b) ?? []), a]);
-  };
-  for (const [t, ds] of deps) for (const d of ds) link(d, t);
-  for (const i of items)
-    if (i.kind === "proof" && i.theorem_id && byId.has(i.theorem_id))
-      link(i.theorem_id, i.id);
-
-  // Barycenter ordering: repeatedly sort each column by the average position
-  // of its neighbors in adjacent columns to minimize edge crossings.
-  const colKeys = [...cols.keys()].sort((a, b) => a - b);
-  const posOf = new Map<string, number>();
-  const reindex = () => {
-    for (const k of colKeys) cols.get(k)!.forEach((it, idx) => posOf.set(it.id, idx));
-  };
-  reindex();
-  for (let pass = 0; pass < 8; pass++) {
-    const forward = pass % 2 === 0;
-    const keys = forward ? colKeys : [...colKeys].reverse();
-    for (const k of keys) {
-      const list = cols.get(k)!;
-      const bary = (it: Item) => {
-        const ns = (neighbors.get(it.id) ?? [])
-          .map((n) => posOf.get(n))
-          .filter((p): p is number => p !== undefined);
-        return ns.length ? ns.reduce((a, b) => a + b, 0) / ns.length : posOf.get(it.id)!;
-      };
-      list.sort((a, b) => bary(a) - bary(b));
-    }
-    reindex();
-  }
-
-  const nodes: Node<CardData>[] = [];
-  for (const [d, list] of cols) {
-    const total = list.length * (NODE_H + ROW_GAP);
-    list.forEach((item, idx) => {
-      nodes.push({
-        id: item.id,
-        type: "card",
-        position: { x: d * (NODE_W + COL_GAP), y: idx * (NODE_H + ROW_GAP) - total / 2 },
-        data: { item, relations: toGroups(relMap.get(item.id)) },
-      });
-    });
-  }
+  const nodes: Node<CardData>[] = items.map((item) => ({
+    id: item.id,
+    type: "card",
+    position: { x: 0, y: 0 }, // placed by the layered layout
+    data: { item, relations: toGroups(relMap.get(item.id)) },
+  }));
 
   // Each relation type gets its own arrowhead (SVG markers defined in EdgeMarkers).
   const markerFor = (label: string) =>
@@ -1026,318 +832,9 @@ function buildGraph(
   return { nodes, edges };
 }
 
-// Force simulation: every pair of boxes repels (stronger when close, hard push
-// when overlapping), and a weak pull keeps the graph centred. Connected boxes
-// are NOT pulled together — edges only draw lines, they exert no force.
-// Velocities are damped so the layout settles into equilibrium; dragged boxes
-// stay pinned.
-type Vel = { vx: number; vy: number };
-type SimEdge = { source: string; target: string };
-
-const REPULSION = 700000; // inverse-square strength — dominates all other forces
-const REPULSE_RANGE = 1200;
-const CENTER_PULL = 0.0012; // gentle pull toward the middle of the canvas
-const DAMPING = 0.85;
-const MAX_SPEED = 30;
-const REST_SPEED = 0.3;
-const UNTANGLE = 28; // prioritize uncrossing actual curved paths during settling
-const SET_PULL = 0.00242; // pull toward the centre of each set the box belongs to
-const KIND_PULL = 0.00088; // weaker pull toward the centre of the box's kind
-const INTERSET_REPULSION = 0.95; // slightly less push between boxes in different sets
-const SET_CENTER_SPACING = 2200; // keep set centres distinct without pushing them too far apart
-const SET_CENTER_PUSH = 0.008;
-const ALPHA_DECAY = 0.985; // "temperature" cools every frame so the graph always settles
-const ALPHA_MIN = 0.004;
-
-// Segment intersection test (proper crossings only; shared endpoints excluded by caller)
-function segmentsCross(
-  ax: number, ay: number, bx: number, by: number,
-  cx2: number, cy2: number, dx: number, dy: number,
-): boolean {
-  const orient = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) =>
-    (qy - py) * (rx - qx) - (qx - px) * (ry - qy);
-  const o1 = orient(ax, ay, bx, by, cx2, cy2);
-  const o2 = orient(ax, ay, bx, by, dx, dy);
-  const o3 = orient(cx2, cy2, dx, dy, ax, ay);
-  const o4 = orient(cx2, cy2, dx, dy, bx, by);
-  return o1 * o2 < 0 && o3 * o4 < 0;
-}
-
-// A discrete finishing pass can untangle crossings that gentle forces cannot
-// escape: swapping two same-set cards changes their ordering without scattering
-// the collection. Score the drawn curves, not straight lines between centres.
-function crossingScore(nodes: Node<CardData>[], edges: SimEdge[]) {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const paths = edges.map((edge) => {
-    const source = byId.get(edge.source), target = byId.get(edge.target);
-    return source && target ? edgePoints(source, target) : [];
-  });
-  let score = 0;
-  for (let i = 0; i < edges.length; i++) for (let j = i + 1; j < edges.length; j++) {
-    const a = edges[i]!, b = edges[j]!;
-    if (a.source === b.source || a.source === b.target || a.target === b.source || a.target === b.target) continue;
-    const first = paths[i]!, second = paths[j]!;
-    let crosses = false;
-    for (let u = 1; u < first.length && !crosses; u++) for (let v = 1; v < second.length; v++) {
-      const p = first[u - 1]!, q = first[u]!, r = second[v - 1]!, s = second[v]!;
-      if (segmentsCross(p.x, p.y, q.x, q.y, r.x, r.y, s.x, s.y)) { crosses = true; break; }
-    }
-    if (crosses) score++;
-  }
-  for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
-    const a = nodes[i]!, b = nodes[j]!;
-    const overlapX = Math.min(a.position.x + nodeWidth(a), b.position.x + nodeWidth(b)) - Math.max(a.position.x, b.position.x);
-    const overlapY = Math.min(a.position.y + nodeHeight(a), b.position.y + nodeHeight(b)) - Math.max(a.position.y, b.position.y);
-    if (overlapX > 0 && overlapY > 0) score += 5;
-  }
-  return score;
-}
-
-function polishCrossings(nodes: Node<CardData>[], edges: SimEdge[], groups: Map<string, { kind: string; sets: string[] }>, pinned: Set<string>) {
-  let result = nodes;
-  let best = crossingScore(result, edges);
-  const linked = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
-  for (let pass = 0; pass < 8 && best > 0; pass++) {
-    let candidate: Node<CardData>[] | null = null;
-    for (let i = 0; i < result.length; i++) for (let j = i + 1; j < result.length; j++) {
-      const a = result[i]!, b = result[j]!;
-      if (!linked.has(a.id) && !linked.has(b.id)) continue;
-      if (pinned.has(a.id) || pinned.has(b.id) || a.dragging || b.dragging) continue;
-      const aSets = groups.get(a.id)?.sets ?? [], bSets = groups.get(b.id)?.sets ?? [];
-      if (!aSets.length || !aSets.some((set) => bSets.includes(set))) continue;
-      const trial = [...result];
-      trial[i] = { ...a, position: b.position };
-      trial[j] = { ...b, position: a.position };
-      const score = crossingScore(trial, edges);
-      if (score < best) { best = score; candidate = trial; }
-    }
-    if (!candidate) break;
-    result = candidate;
-  }
-  return result;
-}
-
-function forceStep(
-  nodes: Node<CardData>[],
-  edges: SimEdge[],
-  vels: Map<string, Vel>,
-  pinned: Set<string>,
-  groups: Map<string, { kind: string; sets: string[] }>,
-  alpha: number,
-): Node<CardData>[] {
-  if (nodes.length === 0) return nodes;
-  const anyDrag = nodes.some((n) => n.dragging);
-  if (alpha < ALPHA_MIN && !anyDrag) {
-    vels.clear();
-    return clearEdgeCorridors(nodes, edges, pinned);
-  }
-  const idx = new Map(nodes.map((n, i) => [n.id, i]));
-  const fx = new Float64Array(nodes.length);
-  const fy = new Float64Array(nodes.length);
-  const cx = (n: Node<CardData>) => n.position.x + nodeWidth(n) / 2;
-  const cy = (n: Node<CardData>) => n.position.y + nodeHeight(n) / 2;
-
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const a = nodes[i]!;
-      const b = nodes[j]!;
-      let dx = cx(b) - cx(a);
-      let dy = cy(b) - cy(a);
-      if (dx === 0 && dy === 0) {
-        dx = Math.random() - 0.5;
-        dy = Math.random() - 0.5;
-      }
-      const raw = Math.hypot(dx, dy);
-      if (raw > REPULSE_RANGE) continue;
-      const dist = Math.max(raw, 60); // clamp: avoids huge forces at tiny distances
-      const fade = 1 - raw / REPULSE_RANGE; // smooth falloff, no jump at the range edge
-      let f = (REPULSION / (dist * dist)) * fade * fade;
-      const setsA = groups.get(a.id)?.sets ?? [];
-      const setsB = groups.get(b.id)?.sets ?? [];
-      if (setsA.length && setsB.length && !setsA.some((set) => setsB.includes(set)))
-        f *= INTERSET_REPULSION;
-      const overlapX = (nodeWidth(a) + nodeWidth(b)) / 2 + 60 - Math.abs(dx);
-      const overlapY = (nodeHeight(a) + nodeHeight(b)) / 2 + 60 - Math.abs(dy);
-      if (overlapX > 0 && overlapY > 0) f += Math.min(overlapX, overlapY) * 0.4;
-      const ux = dx / dist;
-      const uy = dy / dist;
-      fx[i]! -= f * ux;
-      fy[i]! -= f * uy;
-      fx[j]! += f * ux;
-      fy[j]! += f * uy;
-    }
-  }
-
-
-  // Clustering: each box is pulled toward the centre of its sets and (more
-  // weakly) of its kind. Pulling toward a group centre keeps the force size
-  // independent of group size, so big groups don't collapse.
-  const centres = new Map<string, { x: number; y: number; n: number }>();
-  const add = (key: string, n: Node<CardData>) => {
-    const c = centres.get(key) ?? { x: 0, y: 0, n: 0 };
-    c.x += cx(n); c.y += cy(n); c.n++;
-    centres.set(key, c);
-  };
-  nodes.forEach((n) => {
-    const g = groups.get(n.id);
-    if (!g) return;
-    add("k:" + g.kind, n);
-    g.sets.forEach((s) => add("s:" + s, n));
-  });
-  nodes.forEach((n, i) => {
-    const g = groups.get(n.id);
-    if (!g) return;
-    const pull = (key: string, k: number) => {
-      const c = centres.get(key);
-      if (!c || c.n < 2) return;
-      fx[i]! += (c.x / c.n - cx(n)) * k;
-      fy[i]! += (c.y / c.n - cy(n)) * k;
-    };
-    pull("k:" + g.kind, KIND_PULL);
-    g.sets.forEach((s) => pull("s:" + s, SET_PULL));
-  });
-
-  // Set centres have their own separation force. Shared-member sets cannot be
-  // split cleanly, so only exclusively owned nodes receive this group push.
-  const setCentres = [...centres.entries()].filter(([key]) => key.startsWith("s:"));
-  for (let i = 0; i < setCentres.length; i++) for (let j = i + 1; j < setCentres.length; j++) {
-    const [aKey, a] = setCentres[i]!;
-    const [bKey, b] = setCentres[j]!;
-    const dx = b.x / b.n - a.x / a.n, dy = b.y / b.n - a.y / a.n;
-    const distance = Math.hypot(dx, dy);
-    if (distance >= SET_CENTER_SPACING) continue;
-    const ux = distance > 1 ? dx / distance : 1;
-    const uy = distance > 1 ? dy / distance : 0;
-    const push = Math.min(SET_CENTER_SPACING - distance, 500) * SET_CENTER_PUSH;
-    nodes.forEach((n, index) => {
-      const owned = groups.get(n.id)?.sets ?? [];
-      const side = owned.includes(aKey.slice(2)) && !owned.includes(bKey.slice(2)) ? -1
-        : owned.includes(bKey.slice(2)) && !owned.includes(aKey.slice(2)) ? 1 : 0;
-      fx[index]! += ux * push * side;
-      fy[index]! += uy * push * side;
-    });
-  }
-
-  // Untangle the same sampled Bezier curves that are drawn on screen. Move the
-  // endpoint nearest a crossing across the other curve rather than translating
-  // both edges along their nearly coincident midpoints.
-  for (let i = 0; i < edges.length; i++) {
-    for (let j = i + 1; j < edges.length; j++) {
-      const e1 = edges[i]!;
-      const e2 = edges[j]!;
-      if (
-        e1.source === e2.source || e1.source === e2.target ||
-        e1.target === e2.source || e1.target === e2.target
-      )
-        continue;
-      const a = idx.get(e1.source);
-      const b = idx.get(e1.target);
-      const c = idx.get(e2.source);
-      const d = idx.get(e2.target);
-      if (a === undefined || b === undefined || c === undefined || d === undefined) continue;
-      const first = edgePoints(nodes[a]!, nodes[b]!);
-      const second = edgePoints(nodes[c]!, nodes[d]!);
-      let crossing: { x: number; y: number; nx: number; ny: number } | null = null;
-      for (let u = 1; u < first.length && !crossing; u++) for (let v = 1; v < second.length; v++) {
-        const p = first[u - 1]!, q = first[u]!;
-        const r = second[v - 1]!, s = second[v]!;
-        if (!segmentsCross(p.x, p.y, q.x, q.y, r.x, r.y, s.x, s.y)) continue;
-        const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
-        crossing = { x: (p.x + q.x + r.x + s.x) / 4, y: (p.y + q.y + r.y + s.y) / 4,
-          nx: -(q.y - p.y) / length, ny: (q.x - p.x) / length };
-        break;
-      }
-      if (!crossing) continue;
-      const { x, y, nx, ny } = crossing;
-      // Push the closer free endpoint across the first path, with the other
-      // endpoint following weakly to avoid sharply bending the connecting edge.
-      const choice = [c, d].filter((k) => !pinned.has(nodes[k]!.id) && !nodes[k]!.dragging)
-        .sort((left, right) => Math.hypot(cx(nodes[left]!) - x, cy(nodes[left]!) - y)
-          - Math.hypot(cx(nodes[right]!) - x, cy(nodes[right]!) - y))[0];
-      if (choice !== undefined) {
-        const signed = (cx(nodes[choice]!) - x) * nx + (cy(nodes[choice]!) - y) * ny;
-        const direction = signed >= 0 ? 1 : -1;
-        fx[choice]! += nx * direction * UNTANGLE;
-        fy[choice]! += ny * direction * UNTANGLE;
-      }
-    }
-  }
-
-  let mx = 0;
-  let my = 0;
-  for (const n of nodes) {
-    mx += cx(n);
-    my += cy(n);
-  }
-  mx /= nodes.length;
-  my /= nodes.length;
-
-  let moving = false;
-  const next = nodes.map((n, i) => {
-    if (n.dragging || pinned.has(n.id)) {
-      vels.set(n.id, { vx: 0, vy: 0 });
-      if (n.dragging) moving = true;
-      return n;
-    }
-    const v = vels.get(n.id) ?? { vx: 0, vy: 0 };
-    let vx = (v.vx + (fx[i]! + (mx - cx(n)) * CENTER_PULL) * alpha) * DAMPING;
-    let vy = (v.vy + (fy[i]! + (my - cy(n)) * CENTER_PULL) * alpha) * DAMPING;
-    const sp = Math.hypot(vx, vy);
-    if (sp > MAX_SPEED) {
-      vx = (vx / sp) * MAX_SPEED;
-      vy = (vy / sp) * MAX_SPEED;
-    }
-    // Dead zone: kill tiny residual velocities so boxes stop dead instead of
-    // oscillating around equilibrium (the "wobble").
-    if (sp < REST_SPEED) {
-      vels.set(n.id, { vx: 0, vy: 0 });
-      return n;
-    }
-    // Extra braking at low speed so motion decays smoothly into the dead zone
-    if (sp < 2.5) {
-      vx *= 0.6;
-      vy *= 0.6;
-    }
-    vels.set(n.id, { vx, vy });
-    moving = true;
-    return { ...n, position: { x: n.position.x + vx, y: n.position.y + vy } };
-  });
-  // Separate actual measured rectangles, including expanded cards. Repeat
-  // after edge clearance too, since moving an edge can crowd a neighbor.
-  const GAP = 50;
-  const separateBoxes = (iterations: number) => {
-    for (let iter = 0; iter < iterations; iter++) {
-      for (let i = 0; i < next.length; i++) {
-        for (let j = i + 1; j < next.length; j++) {
-        const a = next[i]!;
-        const b = next[j]!;
-        const ox = (nodeWidth(a) + nodeWidth(b)) / 2 + GAP - Math.abs(cx(b) - cx(a));
-        const oy = (nodeHeight(a) + nodeHeight(b)) / 2 + GAP - Math.abs(cy(b) - cy(a));
-        if (ox <= 0.5 || oy <= 0.5) continue;
-        const fa = a.dragging || pinned.has(a.id) ? 0 : 1;
-        const fb = b.dragging || pinned.has(b.id) ? 0 : 1;
-        if (fa + fb === 0) continue;
-        const push = (ox < oy ? ox : oy) / (fa + fb);
-        const sx = ox < oy ? (cx(b) >= cx(a) ? 1 : -1) : 0;
-        const sy = ox < oy ? 0 : cy(b) >= cy(a) ? 1 : -1;
-        if (fa) next[i] = { ...a, position: { x: a.position.x - sx * push * fa, y: a.position.y - sy * push * fa } };
-        if (fb) next[j] = { ...b, position: { x: b.position.x + sx * push * fb, y: b.position.y + sy * push * fb } };
-        moving = true;
-        }
-      }
-    }
-  };
-  separateBoxes(2);
-  separateBoxes(8);
-  const clear = clearEdgeCorridors(next, edges, pinned);
-  return moving || clear !== next ? clear : nodes; // same array => no re-render once settled
-}
-
-const EDGE_BUFFER = 60;
 const LAYOUT_KEY = "mathgraph-layout-v1";
 const COLLECTIONS_KEY = "mathgraph-collections";
 const STRONG_KEY = "mathgraph-strong-edges";
-const defaultPositions: Record<string, { x: number; y: number }> = defaultGraphLayout;
 
 function Index() {
   const [mounted, setMounted] = useState(false);
@@ -1348,14 +845,31 @@ function Index() {
     [data],
   );
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CardData>>([] as Node<CardData>[]);
-  const [layoutVersion, setLayoutVersion] = useState(0);
-  const initialLayoutRef = useRef(false);
-  const reheatRef = useRef<() => void>(() => {});
-  const handleNodesChange: typeof onNodesChange = (changes) => {
-    if (!initialLayoutRef.current && changes.some((change) => change.type === "dimensions")) reheatRef.current();
-    onNodesChange(changes);
+  // Layered layout input: each card's primary set is its most specific (smallest)
+  // set; sets become horizontal bands, largest first.
+  const computeLayout = (ns: Node<CardData>[]) => {
+    if (!graph || !data) return null;
+    const size = new Map<string, number>();
+    for (const se of data.setElements) size.set(se.set_id, (size.get(se.set_id) ?? 0) + 1);
+    const primary = new Map<string, string>();
+    for (const se of data.setElements) {
+      const current = primary.get(se.element_id);
+      if (!current || size.get(se.set_id)! < size.get(current)!) primary.set(se.element_id, se.set_id);
+    }
+    const name = new Map(data.sets.map((set) => [set.id, set.name]));
+    const ranked = [...size.keys()].sort((a, b) => size.get(b)! - size.get(a)! || (name.get(a) ?? "").localeCompare(name.get(b) ?? ""));
+    return layeredLayout(
+      ns.map((n) => ({ id: n.id, kind: n.data.item.kind, width: nodeWidth(n), height: nodeHeight(n), set: primary.get(n.id) ?? null })),
+      graph.edges,
+      (set) => (set ? ranked.indexOf(set) : ranked.length),
+    );
   };
-  const vels = useRef(new Map<string, Vel>());
+  const [layoutVersion, setLayoutVersion] = useState(0);
+  // True while positions should be (re)computed by the layered layout once
+  // every card has been measured: new visitors and Reset positions.
+  const needsLayoutRef = useRef(false);
+  const [layout, setLayout] = useState<LayeredResult | null>(null);
+  const handleNodesChange = onNodesChange;
   const pinnedRef = useRef(new Set<string>());
   const [savedFlash, setSavedFlash] = useState(false);
   // Signed-in user: preferences live in the account; otherwise in this browser.
@@ -1541,6 +1055,12 @@ function Index() {
       ? graph.edges.filter((e) => visible.has(e.source) && visible.has(e.target))
       : graph.edges;
     if (canonicalOnly || trace) list = list.filter((e) => strongEdges.includes(e.id));
+    // Lane points from the layered layout; the edge only follows them while
+    // both endpoints are still where the layout put them.
+    list = list.map((e) => ({
+      ...e,
+      data: { ...e.data, route: layout?.routes[e.id], routeFrom: layout?.positions[e.source], routeTo: layout?.positions[e.target] },
+    }));
     const kindOf = (id: string) => graph.nodes.find((n) => n.id === id)?.data.item.kind;
     return list.map((e) => {
       // Definitions get their own dotted line: theorems lean on many of them,
@@ -1563,7 +1083,7 @@ function Index() {
         },
       };
     });
-  }, [graph, visible, strongEdges, canonicalOnly, trace]);
+  }, [graph, visible, strongEdges, canonicalOnly, trace, layout]);
 
   const saveLayout = (ns: Node<CardData>[]) => {
     const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
@@ -1584,7 +1104,7 @@ function Index() {
     setTimeout(() => setNodes((ns) => (saveLayout(ns), ns)), 0); // persist once
   }
 
-  // Restore saved positions and pins; only unsaved layouts run the simulation.
+  // Restore saved positions and pins; compute layered positions for unsaved layouts.
   useEffect(() => {
     if (!graph || !authReady) return;
     let cancelled = false;
@@ -1636,20 +1156,19 @@ function Index() {
       pinnedRef.current = new Set(
         Object.entries(saved).filter(([, v]) => v.pinned).map(([k]) => k),
       );
-      // Start new visitors close to the shared arrangement, then let the forces
-      // settle it once. Saved positions always take precedence and stay frozen.
-      initialLayoutRef.current = Object.keys(saved).length === 0;
-       setNodes(clearEdgeCorridors(separateSetOutlines(
-         graph.nodes.map((n) => {
-          const s = saved[n.id];
-          const shared = defaultPositions[n.id];
-          return {
-            ...n,
-            position: s ? { x: s.x, y: s.y } : shared ?? n.position,
-            data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
-          };
-          }), data?.setElements ?? [], pinnedRef.current), graph.edges, pinnedRef.current));
-      vels.current.clear();
+      // Saved positions always take precedence; everyone else gets the
+      // deterministic layered layout (refined once cards are measured).
+      needsLayoutRef.current = Object.keys(saved).length === 0;
+      const initial = computeLayout(graph.nodes);
+      setLayout(initial);
+      setNodes(graph.nodes.map((n) => {
+        const s = saved[n.id];
+        return {
+          ...n,
+          position: s ? { x: s.x, y: s.y } : initial?.positions[n.id] ?? n.position,
+          data: { ...n.data, pinned: !!s?.pinned, onTogglePin: togglePin },
+        };
+      }));
       setLayoutVersion((v) => v + 1);
     })();
     return () => {
@@ -1659,66 +1178,25 @@ function Index() {
 
   const saveLayoutRef = useRef(saveLayout);
   saveLayoutRef.current = saveLayout;
-  // Run physics once for unsaved layouts, then freeze and save the result.
-  const simEdges = useMemo<SimEdge[]>(
-    () => (graph ? graph.edges.map((e) => ({ source: e.source, target: e.target })) : []),
-    [graph],
-  );
-  // Group membership for the clustering forces: kind + sets per node
-  const simGroups = useMemo(() => {
-    const m = new Map<string, { kind: string; sets: string[] }>();
-    if (!data) return m;
-    for (const it of data.items) m.set(it.id, { kind: it.kind, sets: [] });
-    for (const se of data.setElements) m.get(se.element_id)?.sets.push(se.set_id);
-    return m;
-  }, [data]);
+  // Once every card has real measured dimensions, place them with the layered
+  // layout, save the result and fit the view. Nothing moves afterwards except
+  // by dragging.
   useEffect(() => {
-    if (!layoutVersion) return;
-    let raf = 0;
-    let alpha = initialLayoutRef.current ? 0.35 : 0;
-    let frames = 0;
-    let active = initialLayoutRef.current;
-    reheatRef.current = () => { active = true; frames = 0; alpha = Math.max(alpha, 0.6); };
-    let saveTimer: ReturnType<typeof setTimeout> | undefined;
-    const tick = () => {
-      if (active)
-        setNodes((ns) => {
-          if (!ns.length) return ns;
-          alpha *= ALPHA_DECAY;
-          let next = forceStep(ns, simEdges, vels.current, pinnedRef.current, simGroups, alpha);
-          if (data?.setElements.length) next = separateSetOutlines(next, data.setElements, pinnedRef.current);
-          frames++;
-          // Stop after the forces cool, even if a dense cluster cannot reach
-          // a perfect equilibrium. Manual drags do not wake the simulation.
-           if ((next === ns || frames >= 240) && !ns.some((n) => n.dragging)) {
-             if (initialLayoutRef.current) {
-               next = polishCrossings(next, simEdges, simGroups, pinnedRef.current);
-               if (data?.setElements.length) next = separateSetOutlines(next, data.setElements, pinnedRef.current);
-               next = clearEdgeCorridors(next, simEdges, pinnedRef.current);
-             }
-            active = false;
-            initialLayoutRef.current = false;
-            vels.current.clear();
-            clearTimeout(saveTimer);
-             saveTimer = setTimeout(() => {
-               saveLayoutRef.current(next);
-               fitFlowRef.current();
-             }, 0);
-          }
-          return next;
-        });
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(saveTimer);
-      reheatRef.current = () => {};
-    };
-  }, [setNodes, simEdges, simGroups, data, layoutVersion]);
+    if (!needsLayoutRef.current || !nodes.length) return;
+    if (!nodes.every((n) => n.measured?.width && n.measured?.height)) return;
+    const result = computeLayout(nodes);
+    if (!result) return;
+    needsLayoutRef.current = false;
+    setLayout(result);
+    const next = nodes.map((n) => ({ ...n, position: result.positions[n.id] ?? n.position }));
+    setNodes(next);
+    setTimeout(() => {
+      saveLayoutRef.current(next);
+      fitFlowRef.current();
+    }, 0);
+  }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleExpand = (id: string) => {
-    reheatRef.current();
     setNodes((ns) =>
       ns.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, expanded: !n.data.expanded } } : n,
@@ -1733,7 +1211,7 @@ function Index() {
   fitFlowRef.current = () => {
     if (!clickedNodeRef.current) void flow?.fitView({ padding: 0.2, duration: 800, includeHiddenNodes: true });
   };
-  // Re-fit the view once, after the initial layout has had time to settle
+  // Re-fit once after the initial cards have been measured.
   useEffect(() => {
     if (!flow || !graph || !layoutVersion) return;
     const t = setTimeout(() => {
@@ -1746,7 +1224,7 @@ function Index() {
     clickedNodeRef.current = true;
     toggleExpand(id);
     clearTimeout(focusTimerRef.current);
-    // Wait for the expanded box to be measured and its neighbors to move away.
+    // Wait for the expanded box to be measured.
     focusTimerRef.current = setTimeout(() => {
       const node = flow?.getNode(id);
       if (!node || !flow) return;
@@ -1850,14 +1328,8 @@ function Index() {
               onReset={() => {
               if (!graph) return;
               pinnedRef.current.clear();
-              vels.current.clear();
-              initialLayoutRef.current = true;
-              setNodes(graph.nodes.map((n) => ({
-                ...n,
-                position: defaultPositions[n.id] ?? n.position,
-                data: { ...n.data, pinned: false, onTogglePin: togglePin },
-              })));
-              setLayoutVersion((v) => v + 1);
+              needsLayoutRef.current = true;
+              setNodes((ns) => ns.map((n) => ({ ...n, data: { ...n.data, pinned: false, onTogglePin: togglePin } })));
             }}
               canonicalOnly={canonicalOnly}
               onToggleCanonical={setCanonicalOnly}
