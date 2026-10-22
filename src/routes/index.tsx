@@ -979,6 +979,7 @@ const COLLECTIONS_KEY = "mathgraph-collections";
 const STRONG_KEY = "mathgraph-strong-edges";
 
 function Index() {
+  const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
@@ -1028,7 +1029,8 @@ function Index() {
       const { data: u } = await supabase.auth.getUser();
       let name = (u.user?.user_metadata?.["full_name"] as string | undefined)?.trim();
       while (!name || name.length < 2) {
-        const entered = window.prompt("Please enter your full real name (shown on your contributions):");
+        const promptText = t("graph.realNamePrompt");
+        const entered = window.prompt(promptText);
         if (entered === null) return;
         name = entered.trim();
       }
@@ -1080,14 +1082,19 @@ function Index() {
     persist({ collections: next });
   };
   const newCollection = () => {
-    const name = window.prompt("Name of the new collection")?.trim();
+    const promptMsg = t("graph.collectionPrompt");
+    const entered = window.prompt(promptMsg);
+    const name = entered?.trim();
     if (!name) return;
     const c = { id: crypto.randomUUID(), name, ids: [] };
     updateCollections([...collections, c]);
     setActiveId(c.id);
   };
   const deleteCollection = () => {
-    if (!active || !window.confirm(`Delete collection "${active.name}"?`)) return;
+    if (!active) return;
+    const confirmMsg = t("graph.deleteCollectionConfirm", { name: active.name });
+    const confirmed = window.confirm(confirmMsg);
+    if (!confirmed) return;
     updateCollections(collections.filter((c) => c.id !== active.id));
     setActiveId("");
     setShowOnly(false);
@@ -1214,9 +1221,11 @@ function Index() {
         };
       }
       const strong = strongEdges.includes(e.id);
+      const canonicalTag = t("graph.legendCanonical");
+      const strongLabel = `${e.label} (${canonicalTag})`;
       return {
         ...e,
-        label: strong ? `${e.label} (canonical)` : e.label,
+        label: strong ? strongLabel : e.label,
         style: {
           stroke: "var(--foreground)",
           strokeWidth: strong ? 3 : 1.25,
@@ -1414,7 +1423,7 @@ function Index() {
       <header className="pointer-events-none absolute left-0 top-14 z-10 max-w-full p-3 sm:p-6 md:top-0">
         <h1 className="text-xl font-semibold sm:text-2xl lg:text-3xl tracking-tight text-foreground">MathGraph</h1>
         <p className="mt-1 hidden max-w-sm text-xs text-muted-foreground sm:block lg:text-sm">
-          Arrows point from what is used to what it leads to. Drag to pan, scroll to zoom.
+          {t("graph.tagline")}
         </p>
         <div className="pointer-events-auto relative mt-3 w-[min(18rem,calc(100vw-1.5rem))] lg:w-80">
           <input
@@ -1429,7 +1438,7 @@ function Index() {
               if (e.key === "Enter" && matches[0]) goTo(matches[0]);
               if (e.key === "Escape") setOpen(false);
             }}
-            placeholder="Search theorems, axioms, proofs…"
+            placeholder={t("graph.searchPlaceholder")}
             className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-foreground/60"
           />
           {open && matches.length > 0 && (
@@ -1534,7 +1543,7 @@ function Index() {
           </div>
           {active && (
             <p className="max-w-56 text-right text-[11px] leading-snug text-muted-foreground">
-              Click the bookmark on a box to add it to or remove it from “{active.name}”.
+              {t("graph.collectionHint", { name: active.name })}
             </p>
           )}
         </div>
@@ -1542,23 +1551,28 @@ function Index() {
       <div className="pointer-events-auto absolute bottom-0 right-0 z-10 p-6 text-xs text-muted-foreground">
         {userId ? (
           <span>
-            Signed in as {fullName ?? email} — your layout is saved to your account.{" "}
+            {t("graph.signedInAs", { name: fullName ?? email })}{" "}
             <button onClick={() => supabase.auth.signOut()} className="underline">
-              Sign out
+              {t("graph.signOut")}
             </button>
           </span>
         ) : (
           <span>
-            <Link to="/auth" className="underline">Sign in</Link> to keep your layout on any device.
+            <Link to="/auth" className="underline">
+              {t("graph.signInLink")}
+            </Link>{" "}
+            {t("graph.signInPromptPrefix")}
           </span>
         )}
       </div>
       {(isLoading || !mounted) && (
-        <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
+        <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
+          {t("common.loading")}
+        </p>
       )}
       {error && (
         <p className="absolute inset-0 grid place-items-center text-sm text-destructive">
-          Could not load the graph.
+          {t("graph.loadError")}
         </p>
       )}
       {mounted && graph && (
@@ -1595,24 +1609,32 @@ function Index() {
       <div className="pointer-events-none absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 rounded-md border bg-background/90 px-4 py-2 text-xs text-muted-foreground">
         <div className="flex gap-5">
           {[
-            ["mg-uses", "used by"],
-            ["mg-proof", "proved by"],
-          ].map(([m, t]) => (
+            ["mg-uses", t("graph.legendUsedBy")],
+            ["mg-proof", t("graph.legendProvedBy")],
+          ].map(([m, text]) => (
             <span key={m} className="flex items-center gap-1.5">
               <svg width="34" height="14" className="text-foreground">
-                <line x1="2" y1="7" x2="24" y2="7" stroke="currentColor" strokeWidth="1.25" markerEnd={`url(#${m})`} />
+                <line
+                  x1="2"
+                  y1="7"
+                  x2="24"
+                  y2="7"
+                  stroke="currentColor"
+                  strokeWidth="1.25"
+                  markerEnd={`url(#${m})`}
+                />
               </svg>
-              {t}
+              {text}
             </span>
           ))}
         </div>
         <div className="flex gap-5">
           {[
-            ["", "canonical"],
-            ["5 5", "non-canonical"],
-            ["2 4", "definition"],
-          ].map(([dash, t]) => (
-            <span key={t} className="flex items-center gap-1.5">
+            ["", t("graph.legendCanonical")],
+            ["5 5", t("graph.legendNonCanonical")],
+            ["2 4", t("graph.legendDefinition")],
+          ].map(([dash, text]) => (
+            <span key={text} className="flex items-center gap-1.5">
               <svg width="34" height="14" className="text-foreground">
                 <line
                   x1="2"
@@ -1624,7 +1646,7 @@ function Index() {
                   strokeDasharray={dash || undefined}
                 />
               </svg>
-              {t}
+              {text}
             </span>
           ))}
         </div>
