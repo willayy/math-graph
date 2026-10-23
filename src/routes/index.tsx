@@ -471,9 +471,12 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
   } else {
     const dx = tc.x - sc.x;
     const dy = tc.y - sc.y;
-    // Attach only at the middle of a box side: left/right when the boxes are
-    // side by side, top/bottom when they are stacked.
-    const horiz = Math.abs(dx) >= Math.abs(dy);
+    // Attach only at the middle of a box side. The layout flows left to
+    // right, so whenever the target is to the right, leave the source's right
+    // side and enter the target's left side: the curve then stays inside the
+    // empty column gap instead of diving through other bands. Only edges
+    // going backward (or straight down a column) attach at top/bottom.
+    const horiz = dx > 0 || Math.abs(dx) >= Math.abs(dy);
     const p1 = horiz
       ? { x: sc.x + (dx >= 0 ? w(sn) / 2 : -w(sn) / 2), y: sc.y }
       : { x: sc.x, y: sc.y + (dy >= 0 ? h(sn) / 2 : -h(sn) / 2) };
@@ -999,6 +1002,13 @@ function Index() {
       const current = primary.get(se.element_id);
       if (!current || size.get(se.set_id)! < size.get(current)!) primary.set(se.element_id, se.set_id);
     }
+    // A proof belongs to its theorem's set, so proof edges stay inside the
+    // same band instead of diving through other bands to a third strip.
+    for (const n of ns)
+      if (n.data.item.kind === "proof" && n.data.item.theorem_id && !primary.has(n.id)) {
+        const ts = primary.get(n.data.item.theorem_id);
+        if (ts) primary.set(n.id, ts);
+      }
     const name = new Map(data.sets.map((set) => [set.id, set.name]));
     const ranked = [...size.keys()].sort((a, b) => size.get(b)! - size.get(a)! || (name.get(a) ?? "").localeCompare(name.get(b) ?? ""));
     return layeredLayout(
