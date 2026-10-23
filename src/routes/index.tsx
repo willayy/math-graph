@@ -25,6 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { SubmissionsMenu } from "@/components/SubmissionsMenu";
 import { renderLatex } from "@/lib/latex.functions";
 import { Bookmark, Pin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { layeredLayout, type LayeredResult } from "@/lib/layered-layout";
 
 export const Route = createFileRoute("/")({
@@ -151,131 +152,183 @@ const KIND_STYLES: Record<Kind, { border: string; label: string; chip: string }>
 };
 
 function Card({ data }: NodeProps<Node<CardData>>) {
-  const { item, expanded, relations, pinned, onTogglePin, inCollection, onToggleCollection, tracing, onTrace } = data;
-  const meta = [item.date ?? "?", item.creator ?? "?"].join(" · ");
+  const { t } = useTranslation();
+  const {
+    item,
+    expanded,
+    relations,
+    pinned,
+    onTogglePin,
+    inCollection,
+    onToggleCollection,
+    tracing,
+    onTrace,
+  } = data;
+  const dateText = item.date ?? t("common.unknown");
+  const creatorText = item.creator ?? t("common.unknown");
+  const meta = [dateText, creatorText].join(" · ");
   const style = KIND_STYLES[item.kind];
   const zoom = useStore((st) => st.transform[2]);
-  // Begin revealing detail while still zoomed out; keep the same box and
-  // handles mounted throughout so changing modes never jolts the layout.
   const detailOpacity = clamp01((zoom - 0.32) / 0.2);
+  const collectionTitle = inCollection
+    ? t("graph.removeFromCollection")
+    : t("graph.addToCollection");
+  const pinTitle = pinned ? t("graph.unpin") : t("graph.pin");
+
   return (
     <div
       className={`relative cursor-pointer rounded-md border border-foreground/80 border-l-4 bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md ${style.border}`}
       style={{ width: expanded ? 340 : NODE_W, minHeight: NODE_H }}
     >
-      <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!opacity-0 !pointer-events-none"
+        isConnectable={false}
+      />
       <div
         className="pointer-events-none absolute inset-3 flex items-center justify-center text-center transition-opacity duration-200"
         style={{ opacity: 1 - detailOpacity }}
         aria-hidden={detailOpacity === 1}
       >
-        <span className="line-clamp-3 text-3xl font-semibold leading-tight text-foreground">{item.name}</span>
-      </div>
-      <div className="transition-opacity duration-200" style={{ opacity: detailOpacity, pointerEvents: detailOpacity < 0.85 ? "none" : "auto" }}>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest ${style.label}`}>
-          <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
-          {item.kind}
+        <span className="line-clamp-3 text-3xl font-semibold leading-tight text-foreground">
+          {item.name}
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
-          {onToggleCollection && (
+      </div>
+      <div
+        className="transition-opacity duration-200"
+        style={{ opacity: detailOpacity, pointerEvents: detailOpacity < 0.85 ? "none" : "auto" }}
+      >
+        <div className="flex items-baseline justify-between gap-2">
+          <span
+            className={
+              `flex items-center gap-1.5 text-[10px] font-semibold uppercase ` +
+              `tracking-widest ${style.label}`
+            }
+          >
+            <span className={`inline-block h-2 w-2 rounded-full ${style.chip}`} />
+            {item.kind}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-[10px] text-muted-foreground">{meta}</span>
+            {onToggleCollection && (
+              <button
+                title={collectionTitle}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleCollection(item.id);
+                }}
+                className={`nodrag rounded p-0.5 transition-colors ${
+                  inCollection
+                    ? "text-foreground"
+                    : "text-muted-foreground/40 hover:text-muted-foreground"
+                }`}
+              >
+                <Bookmark className="h-3 w-3" fill={inCollection ? "currentColor" : "none"} />
+              </button>
+            )}
             <button
-              title={inCollection ? "Remove from collection" : "Add to collection"}
+              title={pinTitle}
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleCollection(item.id);
+                onTogglePin?.(item.id);
               }}
               className={`nodrag rounded p-0.5 transition-colors ${
-                inCollection ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
+                pinned ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
               }`}
             >
-              <Bookmark className="h-3 w-3" fill={inCollection ? "currentColor" : "none"} />
+              <Pin className="h-3 w-3" fill={pinned ? "currentColor" : "none"} />
             </button>
-          )}
+          </span>
+        </div>
+        <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">{item.name}</h3>
+        <p
+          className={`mt-1 text-xs leading-snug text-foreground/75 ${
+            expanded ? "" : "line-clamp-3"
+          }`}
+        >
+          {zoom > 0.32 ? <RichText text={item.statement} /> : item.statement.replace(/\$/g, "")}
+        </p>
+        {item.citation && (
+          <p
+            className={
+              `mt-1.5 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground ${
+                expanded ? "" : "line-clamp-1"
+              }`
+            }
+          >
+            {item.citation}
+          </p>
+        )}
+        {expanded && (
+          <dl className="mt-2 space-y-1 border-t border-border pt-2 text-[10px]">
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 font-semibold uppercase text-muted-foreground">
+                {t("common.type")}
+              </dt>
+              <dd className="capitalize text-foreground/80">{item.kind}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 font-semibold uppercase text-muted-foreground">
+                {t("common.date")}
+              </dt>
+              <dd className="text-foreground/80">{item.date ?? t("common.unknown")}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="w-14 shrink-0 font-semibold uppercase text-muted-foreground">
+                {t("common.creator")}
+              </dt>
+              <dd className="text-foreground/80">{item.creator ?? t("common.unknown")}</dd>
+            </div>
+            {item.citation && (
+              <div className="flex gap-2">
+                <dt className="w-14 shrink-0 font-semibold uppercase text-muted-foreground">
+                  {t("common.source")}
+                </dt>
+                <dd className="italic text-foreground/80">{item.citation}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+        {expanded && relations && relations.length > 0 && (
+          <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+            {relations.map((g) => (
+              <div key={g.label}>
+                <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                  {g.label}
+                </p>
+                <ul className="mt-0.5 space-y-0.5 text-[11px] leading-snug text-foreground/80">
+                  {g.items.map((r, i) => (
+                    <li key={i}>• {r}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+        {expanded && onTrace && (
           <button
-            title={pinned ? "Unpin — let it move freely" : "Pin — keep it in place"}
             onClick={(e) => {
               e.stopPropagation();
-              onTogglePin?.(item.id);
+              onTrace(item.id);
             }}
-            className={`nodrag rounded p-0.5 transition-colors ${
-              pinned ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground"
-            }`}
+            className={
+              "nodrag mt-2 w-full rounded border border-border px-2 py-1 text-[11px] hover:bg-muted"
+            }
           >
-            <Pin className="h-3 w-3" fill={pinned ? "currentColor" : "none"} />
+            {tracing ? t("graph.showEverything") : t("graph.showCanonicalTrace")}
           </button>
-        </span>
+        )}
+        {expanded && (
+          <p className="mt-1.5 text-[10px] text-muted-foreground">{t("graph.clickToCollapse")}</p>
+        )}
       </div>
-      <h3 className="mt-1 text-sm font-semibold leading-tight text-foreground">
-        {item.name}
-      </h3>
-      <p
-        className={`mt-1 text-xs leading-snug text-foreground/75 ${expanded ? "" : "line-clamp-3"}`}
-      >
-        {zoom > 0.32 ? <RichText text={item.statement} /> : item.statement.replace(/\$/g, "")}
-      </p>
-      {item.citation && (
-        <p
-          className={`mt-1.5 border-t border-border pt-1.5 text-[10px] italic text-muted-foreground ${expanded ? "" : "line-clamp-1"}`}
-        >
-          {item.citation}
-        </p>
-      )}
-      {expanded && (
-        <dl className="mt-2 space-y-1 border-t border-border pt-2 text-[10px]">
-          <div className="flex gap-2">
-            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Type</dt>
-            <dd className="capitalize text-foreground/80">{item.kind}</dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Date</dt>
-            <dd className="text-foreground/80">{item.date ?? "Unknown"}</dd>
-          </div>
-          <div className="flex gap-2">
-            <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Creator</dt>
-            <dd className="text-foreground/80">{item.creator ?? "Unknown"}</dd>
-          </div>
-          {item.citation && (
-            <div className="flex gap-2">
-              <dt className="w-14 shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Source</dt>
-              <dd className="italic text-foreground/80">{item.citation}</dd>
-            </div>
-          )}
-        </dl>
-      )}
-      {expanded && relations && relations.length > 0 && (
-        <div className="mt-2 space-y-1.5 border-t border-border pt-2">
-          {relations.map((g) => (
-            <div key={g.label}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {g.label}
-              </p>
-              <ul className="mt-0.5 space-y-0.5 text-[11px] leading-snug text-foreground/80">
-                {g.items.map((r, i) => (
-                  <li key={i}>• {r}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-      {expanded && onTrace && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onTrace(item.id);
-          }}
-          className="nodrag mt-2 w-full rounded border border-border px-2 py-1 text-[11px] hover:bg-muted"
-        >
-          {tracing ? "Show everything" : "Show canonical trace only"}
-        </button>
-      )}
-      {expanded && (
-        <p className="mt-1.5 text-[10px] text-muted-foreground">Click again to collapse</p>
-      )}
-      </div>
-      <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none" isConnectable={false} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!opacity-0 !pointer-events-none"
+        isConnectable={false}
+      />
     </div>
   );
 }
@@ -418,9 +471,12 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
   } else {
     const dx = tc.x - sc.x;
     const dy = tc.y - sc.y;
-    // Attach only at the middle of a box side: left/right when the boxes are
-    // side by side, top/bottom when they are stacked.
-    const horiz = Math.abs(dx) >= Math.abs(dy);
+    // Attach only at the middle of a box side. The layout flows left to
+    // right, so whenever the target is to the right, leave the source's right
+    // side and enter the target's left side: the curve then stays inside the
+    // empty column gap instead of diving through other bands. Only edges
+    // going backward (or straight down a column) attach at top/bottom.
+    const horiz = dx > 0 || Math.abs(dx) >= Math.abs(dy);
     const p1 = horiz
       ? { x: sc.x + (dx >= 0 ? w(sn) / 2 : -w(sn) / 2), y: sc.y }
       : { x: sc.x, y: sc.y + (dy >= 0 ? h(sn) / 2 : -h(sn) / 2) };
@@ -498,18 +554,20 @@ function ViewMenu(props: {
   onClearTrace: () => void;
 }) {
   const { open, setOpen } = props;
-  const item = "flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted";
+  const { t, i18n } = useTranslation();
+  const item =
+    "flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted";
   return (
     <div className="relative flex flex-1">
       <button onClick={() => setOpen(!open)} className={`${segmentBtn} rounded-l-xl`}>
-        View <Chevron open={open} />
+        {t("graph.viewMenu")} <Chevron open={open} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-md border border-border bg-background shadow-md">
             <p className="border-b border-border px-3 pb-1.5 pt-2.5 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
-              View &amp; layout
+              {t("graph.viewLayout")}
             </p>
             <div className="py-1">
               <button
@@ -519,13 +577,13 @@ function ViewMenu(props: {
                 }}
                 className={item}
               >
-                {props.savedFlash ? "Layout saved ✓" : "Save layout"}
+                {props.savedFlash ? t("graph.layoutSaved") : t("graph.saveLayout")}
               </button>
               <button onClick={props.onReset} className={item}>
-                Reset positions
+                {t("graph.resetPositions")}
               </button>
               <label className={`${item} cursor-pointer`}>
-                Canonical relations only
+                {t("graph.canonicalOnly")}
                 <input
                   type="checkbox"
                   checked={props.canonicalOnly}
@@ -541,9 +599,40 @@ function ViewMenu(props: {
                   }}
                   className={item}
                 >
-                  Clear canonical trace
+                  {t("graph.clearTrace")}
                 </button>
               )}
+            </div>
+            <div
+              className="flex items-center justify-between border-t border-border px-3 py-2 text-xs"
+            >
+              <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                {t("graph.language")}
+              </span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => void i18n.changeLanguage("en")}
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                    i18n.language.startsWith("en")
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {t("graph.langEn")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void i18n.changeLanguage("sv")}
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                    i18n.language.startsWith("sv")
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {t("graph.langSv")}
+                </button>
+              </div>
             </div>
           </div>
         </>
@@ -561,26 +650,59 @@ function FiltersMenu(props: {
   filterKind: string;
   setFilterKind: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="relative flex flex-1">
-      <button onClick={() => props.setOpen(!props.open)} className={segmentBtn} aria-expanded={props.open}>
-        Filters <Chevron open={props.open} />
+      <button
+        onClick={() => props.setOpen(!props.open)}
+        className={segmentBtn}
+        aria-expanded={props.open}
+      >
+        {t("graph.filtersMenu")} <Chevron open={props.open} />
       </button>
       {props.open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => props.setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1 w-60 space-y-2 rounded-md border border-border bg-background p-3 shadow-md">
-            <label htmlFor="set-filter" className="block text-[10px] font-semibold uppercase text-muted-foreground">Set</label>
-            <select id="set-filter" value={props.filterSet} onChange={(e) => props.setFilterSet(e.target.value)} className="w-full bg-background text-xs text-foreground outline-none">
-              <option value="">All sets</option>
-              {props.sets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
-            </select>
-            <label htmlFor="kind-filter" className="block text-[10px] font-semibold uppercase text-muted-foreground">Node type</label>
-            <select id="kind-filter" value={props.filterKind} onChange={(e) => props.setFilterKind(e.target.value)} className="w-full bg-background text-xs text-foreground outline-none">
-              <option value="">All types</option>
-              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map((kind) => (
-                <option key={kind} value={kind}>{kind.replace(/^./, (letter) => letter.toUpperCase())}</option>
+            <label
+              htmlFor="set-filter"
+              className="block text-[10px] font-semibold uppercase text-muted-foreground"
+            >
+              {t("graph.setLabel")}
+            </label>
+            <select
+              id="set-filter"
+              value={props.filterSet}
+              onChange={(e) => props.setFilterSet(e.target.value)}
+              className="w-full bg-background text-xs text-foreground outline-none"
+            >
+              <option value="">{t("graph.allSets")}</option>
+              {props.sets.map((set) => (
+                <option key={set.id} value={set.id}>
+                  {set.name}
+                </option>
               ))}
+            </select>
+            <label
+              htmlFor="kind-filter"
+              className="block text-[10px] font-semibold uppercase text-muted-foreground"
+            >
+              {t("graph.nodeTypeLabel")}
+            </label>
+            <select
+              id="kind-filter"
+              value={props.filterKind}
+              onChange={(e) => props.setFilterKind(e.target.value)}
+              className="w-full bg-background text-xs text-foreground outline-none"
+            >
+              <option value="">{t("graph.allTypes")}</option>
+              {(["axiom", "definition", "conjecture", "theorem", "proof"] as const).map(
+                (kind) => (
+                  <option key={kind} value={kind}>
+                    {kind.replace(/^./, (letter) => letter.toUpperCase())}
+                  </option>
+                ),
+              )}
             </select>
           </div>
         </>
@@ -591,27 +713,44 @@ function FiltersMenu(props: {
 
 // Pages dropdown: links to the change history and about pages.
 function PagesMenu({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="relative flex flex-1">
       <button onClick={() => setOpen(!open)} className={segmentBtn}>
-        Pages <Chevron open={open} />
+        {t("graph.pagesMenu")} <Chevron open={open} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-md border border-border bg-background shadow-md">
             <div className="py-1">
-              <Link to="/history" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
-                Change history
+              <Link
+                to="/history"
+                className="block px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => setOpen(false)}
+              >
+                {t("graph.historyLink")}
               </Link>
-              <Link to="/about" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
-                About
+              <Link
+                to="/about"
+                className="block px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => setOpen(false)}
+              >
+                {t("graph.aboutLink")}
               </Link>
-              <Link to="/verify" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
-                Verify identity
+              <Link
+                to="/verify"
+                className="block px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => setOpen(false)}
+              >
+                {t("graph.verifyLink")}
               </Link>
-              <Link to="/admin" className="block px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setOpen(false)}>
-                Admin review queue
+              <Link
+                to="/admin"
+                className="block px-3 py-1.5 text-xs hover:bg-muted"
+                onClick={() => setOpen(false)}
+              >
+                {t("graph.adminLink")}
               </Link>
             </div>
           </div>
@@ -637,23 +776,26 @@ function CollectionsMenu(props: {
   onDelete: () => void;
 }) {
   const { open, setOpen, collections, activeId, activeName, showOnly } = props;
+  const { t } = useTranslation();
   return (
     <div className="relative flex flex-1">
       <button onClick={() => setOpen(!open)} className={`${segmentBtn} rounded-r-xl`}>
-        <span className="max-w-24 truncate">{activeName ?? "Collections"}</span>
+        <span className="max-w-24 truncate">{activeName ?? t("graph.collectionsMenu")}</span>
         <Chevron open={open} />
       </button>
       {open && (
         <div className="absolute right-0 top-full z-20 mt-1 w-full min-w-52 overflow-hidden rounded-md border border-border bg-background shadow-md">
           <p className="border-b border-border px-3 pb-1.5 pt-2.5 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Collections
+            {t("graph.collectionsMenu")}
           </p>
           <div className="max-h-48 overflow-y-auto py-1">
             <button
               onClick={() => props.onSelect("")}
               className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-muted"
             >
-              <span className={activeId ? "text-muted-foreground" : "font-medium"}>No collection</span>
+              <span className={activeId ? "text-muted-foreground" : "font-medium"}>
+                {t("graph.noCollection")}
+              </span>
               {!activeId && <CheckIcon />}
             </button>
             {collections.map((c) => (
@@ -662,7 +804,9 @@ function CollectionsMenu(props: {
                 onClick={() => props.onSelect(c.id)}
                 className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
               >
-                <span className={`truncate ${c.id === activeId ? "font-medium" : ""}`}>{c.name}</span>
+                <span className={`truncate ${c.id === activeId ? "font-medium" : ""}`}>
+                  {c.name}
+                </span>
                 <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
                   {c.ids.length}
                   {c.id === activeId && <CheckIcon />}
@@ -670,7 +814,9 @@ function CollectionsMenu(props: {
               </button>
             ))}
             {collections.length === 0 && (
-              <p className="px-3 py-1.5 text-xs text-muted-foreground">No collections yet.</p>
+              <p className="px-3 py-1.5 text-xs text-muted-foreground">
+                {t("graph.noCollectionsYet")}
+              </p>
             )}
           </div>
           <div className="border-t border-border py-1">
@@ -678,7 +824,7 @@ function CollectionsMenu(props: {
               onClick={props.onNew}
               className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
             >
-              + New collection
+              {t("graph.newCollection")}
             </button>
             {activeId && (
               <>
@@ -686,13 +832,13 @@ function CollectionsMenu(props: {
                   onClick={props.onToggleShowOnly}
                   className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
                 >
-                  {showOnly ? "Show all nodes" : "Show only this collection"}
+                  {showOnly ? t("graph.showAllNodes") : t("graph.showOnlyCollection")}
                 </button>
                 <button
                   onClick={props.onDelete}
                   className="w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted"
                 >
-                  Delete collection
+                  {t("graph.deleteCollection")}
                 </button>
               </>
             )}
@@ -836,6 +982,7 @@ const COLLECTIONS_KEY = "mathgraph-collections";
 const STRONG_KEY = "mathgraph-strong-edges";
 
 function Index() {
+  const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const { data, isLoading, error } = useQuery({ queryKey: ["graph"], queryFn: fetchGraph });
@@ -885,7 +1032,8 @@ function Index() {
       const { data: u } = await supabase.auth.getUser();
       let name = (u.user?.user_metadata?.["full_name"] as string | undefined)?.trim();
       while (!name || name.length < 2) {
-        const entered = window.prompt("Please enter your full real name (shown on your contributions):");
+        const promptText = t("graph.realNamePrompt");
+        const entered = window.prompt(promptText);
         if (entered === null) return;
         name = entered.trim();
       }
@@ -937,14 +1085,19 @@ function Index() {
     persist({ collections: next });
   };
   const newCollection = () => {
-    const name = window.prompt("Name of the new collection")?.trim();
+    const promptMsg = t("graph.collectionPrompt");
+    const entered = window.prompt(promptMsg);
+    const name = entered?.trim();
     if (!name) return;
     const c = { id: crypto.randomUUID(), name, ids: [] };
     updateCollections([...collections, c]);
     setActiveId(c.id);
   };
   const deleteCollection = () => {
-    if (!active || !window.confirm(`Delete collection "${active.name}"?`)) return;
+    if (!active) return;
+    const confirmMsg = t("graph.deleteCollectionConfirm", { name: active.name });
+    const confirmed = window.confirm(confirmMsg);
+    if (!confirmed) return;
     updateCollections(collections.filter((c) => c.id !== active.id));
     setActiveId("");
     setShowOnly(false);
@@ -1071,9 +1224,11 @@ function Index() {
         };
       }
       const strong = strongEdges.includes(e.id);
+      const canonicalTag = t("graph.legendCanonical");
+      const strongLabel = `${e.label} (${canonicalTag})`;
       return {
         ...e,
-        label: strong ? `${e.label} (canonical)` : e.label,
+        label: strong ? strongLabel : e.label,
         style: {
           stroke: "var(--foreground)",
           strokeWidth: strong ? 3 : 1.25,
@@ -1271,7 +1426,7 @@ function Index() {
       <header className="pointer-events-none absolute left-0 top-14 z-10 max-w-full p-3 sm:p-6 md:top-0">
         <h1 className="text-xl font-semibold sm:text-2xl lg:text-3xl tracking-tight text-foreground">MathGraph</h1>
         <p className="mt-1 hidden max-w-sm text-xs text-muted-foreground sm:block lg:text-sm">
-          Arrows point from what is used to what it leads to. Drag to pan, scroll to zoom.
+          {t("graph.tagline")}
         </p>
         <div className="pointer-events-auto relative mt-3 w-[min(18rem,calc(100vw-1.5rem))] lg:w-80">
           <input
@@ -1286,7 +1441,7 @@ function Index() {
               if (e.key === "Enter" && matches[0]) goTo(matches[0]);
               if (e.key === "Escape") setOpen(false);
             }}
-            placeholder="Search theorems, axioms, proofs…"
+            placeholder={t("graph.searchPlaceholder")}
             className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-foreground/60"
           />
           {open && matches.length > 0 && (
@@ -1391,7 +1546,7 @@ function Index() {
           </div>
           {active && (
             <p className="max-w-56 text-right text-[11px] leading-snug text-muted-foreground">
-              Click the bookmark on a box to add it to or remove it from “{active.name}”.
+              {t("graph.collectionHint", { name: active.name })}
             </p>
           )}
         </div>
@@ -1399,23 +1554,28 @@ function Index() {
       <div className="pointer-events-auto absolute bottom-0 right-0 z-10 p-6 text-xs text-muted-foreground">
         {userId ? (
           <span>
-            Signed in as {fullName ?? email} — your layout is saved to your account.{" "}
+            {t("graph.signedInAs", { name: fullName ?? email })}{" "}
             <button onClick={() => supabase.auth.signOut()} className="underline">
-              Sign out
+              {t("graph.signOut")}
             </button>
           </span>
         ) : (
           <span>
-            <Link to="/auth" className="underline">Sign in</Link> to keep your layout on any device.
+            <Link to="/auth" className="underline">
+              {t("graph.signInLink")}
+            </Link>{" "}
+            {t("graph.signInPromptPrefix")}
           </span>
         )}
       </div>
       {(isLoading || !mounted) && (
-        <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">Loading…</p>
+        <p className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
+          {t("common.loading")}
+        </p>
       )}
       {error && (
         <p className="absolute inset-0 grid place-items-center text-sm text-destructive">
-          Could not load the graph.
+          {t("graph.loadError")}
         </p>
       )}
       {mounted && graph && (
@@ -1452,24 +1612,32 @@ function Index() {
       <div className="pointer-events-none absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 rounded-md border bg-background/90 px-4 py-2 text-xs text-muted-foreground">
         <div className="flex gap-5">
           {[
-            ["mg-uses", "used by"],
-            ["mg-proof", "proved by"],
-          ].map(([m, t]) => (
+            ["mg-uses", t("graph.legendUsedBy")],
+            ["mg-proof", t("graph.legendProvedBy")],
+          ].map(([m, text]) => (
             <span key={m} className="flex items-center gap-1.5">
               <svg width="34" height="14" className="text-foreground">
-                <line x1="2" y1="7" x2="24" y2="7" stroke="currentColor" strokeWidth="1.25" markerEnd={`url(#${m})`} />
+                <line
+                  x1="2"
+                  y1="7"
+                  x2="24"
+                  y2="7"
+                  stroke="currentColor"
+                  strokeWidth="1.25"
+                  markerEnd={`url(#${m})`}
+                />
               </svg>
-              {t}
+              {text}
             </span>
           ))}
         </div>
         <div className="flex gap-5">
           {[
-            ["", "canonical"],
-            ["5 5", "non-canonical"],
-            ["2 4", "definition"],
-          ].map(([dash, t]) => (
-            <span key={t} className="flex items-center gap-1.5">
+            ["", t("graph.legendCanonical")],
+            ["5 5", t("graph.legendNonCanonical")],
+            ["2 4", t("graph.legendDefinition")],
+          ].map(([dash, text]) => (
+            <span key={text} className="flex items-center gap-1.5">
               <svg width="34" height="14" className="text-foreground">
                 <line
                   x1="2"
@@ -1481,7 +1649,7 @@ function Index() {
                   strokeDasharray={dash || undefined}
                 />
               </svg>
-              {t}
+              {text}
             </span>
           ))}
         </div>
