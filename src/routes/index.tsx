@@ -1002,6 +1002,13 @@ function Index() {
       const current = primary.get(se.element_id);
       if (!current || size.get(se.set_id)! < size.get(current)!) primary.set(se.element_id, se.set_id);
     }
+    // A proof belongs to its theorem's set, so proof edges stay inside the
+    // same band instead of diving through other bands to a third strip.
+    for (const n of ns)
+      if (n.data.item.kind === "proof" && n.data.item.theorem_id && !primary.has(n.id)) {
+        const ts = primary.get(n.data.item.theorem_id);
+        if (ts) primary.set(n.id, ts);
+      }
     const name = new Map(data.sets.map((set) => [set.id, set.name]));
     const ranked = [...size.keys()].sort((a, b) => size.get(b)! - size.get(a)! || (name.get(a) ?? "").localeCompare(name.get(b) ?? ""));
     return layeredLayout(
