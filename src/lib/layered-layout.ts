@@ -161,6 +161,18 @@ export function update_square_bottom_for_band(
   return prevSquareBottom;
 }
 
+export function shift_band_members_to_top(
+  members: string[],
+  y: Map<string, number>,
+  top: number,
+  bandTop: number,
+): void {
+  for (const id of members) {
+    const currentY = y.get(id)!;
+    y.set(id, currentY - top + bandTop);
+  }
+}
+
 // One full layout pass. Long edges reserve a dummy lane in every column they
 // span; dummyBands chooses per edge whether those lanes sit in the source's
 // set band (vertical jump at the target end) or the target's band (jump at
