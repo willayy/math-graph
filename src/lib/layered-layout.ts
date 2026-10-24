@@ -150,6 +150,17 @@ export function calculate_top_for_next_band(
   return Math.max(itemFloor, setFloor);
 }
 
+export function update_square_bottom_for_band(
+  bounds: BandVerticalBounds,
+  bandTop: number,
+  prevSquareBottom: number | null,
+): number | null {
+  if (bounds.hasRealNodes) {
+    return bandTop + bounds.relSquareBottom;
+  }
+  return prevSquareBottom;
+}
+
 // One full layout pass. Long edges reserve a dummy lane in every column they
 // span; dummyBands chooses per edge whether those lanes sit in the source's
 // set band (vertical jump at the target end) or the target's band (jump at
