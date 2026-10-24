@@ -451,6 +451,20 @@ function calculate_offset_for_anchor(
   return centeredIndex * step;
 }
 
+function group_edges_by_endpoint(
+  edges: Edge[],
+  endpointKey: "source" | "target",
+): Map<string, Edge[]> {
+  const grouped = new Map<string, Edge[]>();
+  edges.forEach((edge) => {
+    const id = edge[endpointKey];
+    const existing = grouped.get(id) ?? [];
+    existing.push(edge);
+    grouped.set(id, existing);
+  });
+  return grouped;
+}
+
 // Floating edge. When the layered layout has routed this edge through dummy
 // lanes (and both endpoints are still where the layout put them), the line
 // follows those lanes: horizontal runs with smooth vertical connectors, so
