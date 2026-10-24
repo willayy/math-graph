@@ -437,7 +437,7 @@ function SetOutlines({
   );
 }
 
-function calculate_offset_for_anchor(
+export function calculate_offset_for_anchor(
   index: number,
   count: number,
   dimension: number,
