@@ -26,7 +26,11 @@ import { SubmissionsMenu } from "@/components/SubmissionsMenu";
 import { renderLatex } from "@/lib/latex.functions";
 import { Bookmark, Pin } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { layeredLayout, type LayeredResult } from "@/lib/layered-layout";
+import {
+  layeredLayout,
+  type LayeredResult,
+  compute_square_bounds_from_corners,
+} from "@/lib/layered-layout";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -342,27 +346,7 @@ const nodeWidth = (node: Node<CardData>) => node.measured?.width ?? (node.data.e
 const nodeHeight = (node: Node<CardData>) => node.measured?.height ?? NODE_H;
 
 
-export function compute_square_bounds_from_corners(
-  corners: { x: number; y: number }[],
-) {
-  const xs = corners.map((p) => p.x);
-  const ys = corners.map((p) => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const spanX = maxX - minX;
-  const spanY = maxY - minY;
-  const size = Math.max(spanX, spanY);
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  const half = size / 2;
-  const left = centerX - half;
-  const right = centerX + half;
-  const top = centerY - half;
-  const bottom = centerY + half;
-  return { left, right, top, bottom, size };
-}
+export { compute_square_bounds_from_corners };
 
 
 function SetOutlines({
