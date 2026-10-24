@@ -24,6 +24,7 @@ const ROW_GAP = 60;
 const BAND_GAP = 200; // room for two dashed set outlines and the set label
 const DUMMY_H = 24;
 const FOUNDATION = new Set(["axiom", "definition"]);
+export const SET_MARGIN = 55;
 
 type Slot = { id: string; layer: number; band: number; height: number; width: number; dummy: boolean };
 
