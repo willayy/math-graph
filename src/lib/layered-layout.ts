@@ -29,6 +29,14 @@ export const SET_GAP = 80;
 
 type Slot = { id: string; layer: number; band: number; height: number; width: number; dummy: boolean };
 
+export type SquareBounds = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  size: number;
+};
+
 // One full layout pass. Long edges reserve a dummy lane in every column they
 // span; dummyBands chooses per edge whether those lanes sit in the source's
 // set band (vertical jump at the target end) or the target's band (jump at
