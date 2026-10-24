@@ -9,8 +9,8 @@ import {
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
-import "../lib/i18n";
+import { I18nextProvider, useTranslation } from "react-i18next";
+import i18n from "../lib/i18n";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -104,14 +104,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
-  const { i18n } = useTranslation();
+  const currentLang = i18n.language;
   return (
-    <html lang={i18n.language}>
+    <html lang={currentLang}>
       <head>
         <HeadContent />
       </head>
       <body>
-        {children}
+        <I18nextProvider i18n={i18n}>
+          {children}
+        </I18nextProvider>
         <Scripts />
       </body>
     </html>
