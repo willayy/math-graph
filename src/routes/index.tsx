@@ -1118,7 +1118,7 @@ function buildGraph(
   return { nodes, edges };
 }
 
-const LAYOUT_KEY = "mathgraph-layout-v1";
+const LAYOUT_KEY = "mathgraph-layout-v2";
 const COLLECTIONS_KEY = "mathgraph-collections";
 const STRONG_KEY = "mathgraph-strong-edges";
 
