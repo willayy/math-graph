@@ -92,6 +92,49 @@ export type BandVerticalBounds = {
   relSquareBottom: number;
 };
 
+export function compute_vertical_bounds_for_band(
+  members: string[],
+  slots: Map<string, Slot>,
+  colX: number[],
+  colW: number[],
+  y: Map<string, number>,
+  top: number,
+): BandVerticalBounds {
+  const realIds = members.filter((id) => {
+    const slot = slots.get(id);
+    return slot ? !slot.dummy : false;
+  });
+  const itemBottoms = members.map((id) => {
+    const slot = slots.get(id)!;
+    const itemY = y.get(id)!;
+    return itemY + slot.height - top;
+  });
+  const itemHeight = Math.max(...itemBottoms);
+  if (!realIds.length) {
+    return {
+      hasRealNodes: false,
+      itemHeight,
+      relSquareTop: 0,
+      relSquareBottom: itemHeight,
+    };
+  }
+  const corners = collect_corners_for_real_members(
+    realIds,
+    slots,
+    colX,
+    colW,
+    y,
+    top,
+  );
+  const bounds = compute_square_bounds_from_corners(corners);
+  return {
+    hasRealNodes: true,
+    itemHeight,
+    relSquareTop: bounds.top,
+    relSquareBottom: bounds.bottom,
+  };
+}
+
 // One full layout pass. Long edges reserve a dummy lane in every column they
 // span; dummyBands chooses per edge whether those lanes sit in the source's
 // set band (vertical jump at the target end) or the target's band (jump at
