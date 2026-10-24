@@ -488,6 +488,19 @@ function record_indices_for_edge_group(
   });
 }
 
+function build_map_of_endpoint_metadata(
+  grouped: Map<string, Edge[]>,
+  peerKey: "source" | "target",
+  nodePositions: Map<string, { y: number }>,
+): Map<string, { index: number; count: number }> {
+  const metaMap = new Map<string, { index: number; count: number }>();
+  grouped.forEach((group) => {
+    const sorted = sort_edges_by_peer_coordinate(group, peerKey, nodePositions);
+    record_indices_for_edge_group(sorted, metaMap);
+  });
+  return metaMap;
+}
+
 // Floating edge. When the layered layout has routed this edge through dummy
 // lanes (and both endpoints are still where the layout put them), the line
 // follows those lanes: horizontal runs with smooth vertical connectors, so
