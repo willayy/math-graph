@@ -15,7 +15,7 @@ describe("i18n localization", () => {
     const tagline = t("graph.tagline");
     expect(tagline).not.toContain("graph.");
     expect(tagline).toBe(
-      "Arrows point from what is used to what it leads to. Drag to pan, scroll to zoom.",
+      "A visual graph of mathematics — theorems proven from axioms.",
     );
   });
 });
