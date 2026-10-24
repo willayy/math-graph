@@ -135,6 +135,21 @@ export function compute_vertical_bounds_for_band(
   };
 }
 
+export function calculate_top_for_next_band(
+  bounds: BandVerticalBounds,
+  prevSquareBottom: number | null,
+  prevItemBottom: number,
+): number {
+  if (prevSquareBottom === null) {
+    const initialTop = Math.max(0, -bounds.relSquareTop);
+    return bounds.hasRealNodes ? initialTop : 0;
+  }
+  const itemFloor = prevItemBottom + ROW_GAP;
+  const squareOffset = bounds.hasRealNodes ? bounds.relSquareTop : 0;
+  const setFloor = prevSquareBottom + SET_GAP - squareOffset;
+  return Math.max(itemFloor, setFloor);
+}
+
 // One full layout pass. Long edges reserve a dummy lane in every column they
 // span; dummyBands chooses per edge whether those lanes sit in the source's
 // set band (vertical jump at the target end) or the target's band (jump at
