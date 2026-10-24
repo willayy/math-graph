@@ -542,53 +542,99 @@ function format_curve_segment_for_points(
 // follows those lanes: horizontal runs with smooth vertical connectors, so
 // every edge flows strictly left to right and never cuts through a column.
 // Otherwise it falls back to a direct curve between the two boxes.
-function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style, data }: EdgeProps) {
+function FloatingEdge({
+  id,
+  source,
+  target,
+  label,
+  markerEnd,
+  markerStart,
+  style,
+  data,
+}: EdgeProps) {
   const sn = useInternalNode(source);
   const tn = useInternalNode(target);
   if (!sn || !tn) return null;
   const w = (n: typeof sn | typeof tn) => n.measured?.width ?? NODE_W;
   const h = (n: typeof sn | typeof tn) => n.measured?.height ?? NODE_H;
-  const sc = { x: sn.internals.positionAbsolute.x + w(sn) / 2, y: sn.internals.positionAbsolute.y + h(sn) / 2 };
-  const tc = { x: tn.internals.positionAbsolute.x + w(tn) / 2, y: tn.internals.positionAbsolute.y + h(tn) / 2 };
-  type RouteData = { route?: { x: number; y: number }[]; routeFrom?: { x: number; y: number }; routeTo?: { x: number; y: number } };
+  const sc = {
+    x: sn.internals.positionAbsolute.x + w(sn) / 2,
+    y: sn.internals.positionAbsolute.y + h(sn) / 2,
+  };
+  const tc = {
+    x: tn.internals.positionAbsolute.x + w(tn) / 2,
+    y: tn.internals.positionAbsolute.y + h(tn) / 2,
+  };
+  type RouteData = {
+    route?: { x: number; y: number }[];
+    routeFrom?: { x: number; y: number };
+    routeTo?: { x: number; y: number };
+    sourceIndex?: number;
+    sourceCount?: number;
+    targetIndex?: number;
+    targetCount?: number;
+  };
   const rd = (data ?? {}) as RouteData;
-  const near = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y) < 2;
-  // Positions (top-left corners) must still match the layout; dragging a box
-  // releases the edge back to a direct curve.
+  const near = (a: { x: number; y: number }, b: { x: number; y: number }) => (
+    Math.hypot(a.x - b.x, a.y - b.y) < 2
+  );
   const routed =
-    !!rd.route?.length && !!rd.routeFrom && !!rd.routeTo &&
-    near(rd.routeFrom, sn.internals.positionAbsolute) && near(rd.routeTo, tn.internals.positionAbsolute);
+    Boolean(rd.route?.length) &&
+    Boolean(rd.routeFrom) &&
+    Boolean(rd.routeTo) &&
+    near(rd.routeFrom!, sn.internals.positionAbsolute) &&
+    near(rd.routeTo!, tn.internals.positionAbsolute);
+
+  const sIdx = rd.sourceIndex ?? 0;
+  const sCnt = rd.sourceCount ?? 1;
+  const tIdx = rd.targetIndex ?? 0;
+  const tCnt = rd.targetCount ?? 1;
 
   let path: string;
-  let labelX: number, labelY: number;
+  let labelX: number;
+  let labelY: number;
   if (routed) {
-    const pts = [{ x: sc.x + w(sn) / 2, y: sc.y }, ...rd.route!, { x: tc.x - w(tn) / 2, y: tc.y }];
-    const seg = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-      Math.abs(b.y - a.y) < 0.5
-        ? `L ${b.x} ${b.y}`
-        : `C ${a.x + (b.x - a.x) / 2} ${a.y}, ${b.x - (b.x - a.x) / 2} ${b.y}, ${b.x} ${b.y}`;
-    path = `M ${pts[0]!.x} ${pts[0]!.y} ` + pts.slice(1).map((p, i) => seg(pts[i]!, p)).join(" ");
-    const mid = pts[Math.floor((pts.length - 1) / 2)]!;
-    [labelX, labelY] = [mid.x, mid.y];
+    const sOffset = calculate_offset_for_anchor(sIdx, sCnt, h(sn));
+    const tOffset = calculate_offset_for_anchor(tIdx, tCnt, h(tn));
+    const startPt = { x: sc.x + w(sn) / 2, y: sc.y + sOffset };
+    const endPt = { x: tc.x - w(tn) / 2, y: tc.y + tOffset };
+    const pts = [startPt, ...rd.route!, endPt];
+    const segments = pts.slice(1).map((p, i) => format_curve_segment_for_points(pts[i]!, p));
+    const joinedSegs = segments.join(" ");
+    path = `M ${pts[0]!.x} ${pts[0]!.y} ${joinedSegs}`;
+    const midIndex = Math.floor((pts.length - 1) / 2);
+    const mid = pts[midIndex]!;
+    labelX = mid.x;
+    labelY = mid.y;
   } else {
     const dx = tc.x - sc.x;
     const dy = tc.y - sc.y;
-    // Attach only at the middle of a box side: left/right when the boxes are
-    // side by side, top/bottom when they are stacked.
-    const horiz = Math.abs(dx) >= Math.abs(dy);
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    const horiz = absDx >= absDy;
+    const dimSn = horiz ? h(sn) : w(sn);
+    const dimTn = horiz ? h(tn) : w(tn);
+    const sOffset = calculate_offset_for_anchor(sIdx, sCnt, dimSn);
+    const tOffset = calculate_offset_for_anchor(tIdx, tCnt, dimTn);
     const p1 = horiz
-      ? { x: sc.x + (dx >= 0 ? w(sn) / 2 : -w(sn) / 2), y: sc.y }
-      : { x: sc.x, y: sc.y + (dy >= 0 ? h(sn) / 2 : -h(sn) / 2) };
+      ? { x: sc.x + (dx >= 0 ? w(sn) / 2 : -w(sn) / 2), y: sc.y + sOffset }
+      : { x: sc.x + sOffset, y: sc.y + (dy >= 0 ? h(sn) / 2 : -h(sn) / 2) };
     const p2 = horiz
-      ? { x: tc.x + (dx >= 0 ? -w(tn) / 2 : w(tn) / 2), y: tc.y }
-      : { x: tc.x, y: tc.y + (dy >= 0 ? -h(tn) / 2 : h(tn) / 2) };
+      ? { x: tc.x + (dx >= 0 ? -w(tn) / 2 : w(tn) / 2), y: tc.y + tOffset }
+      : { x: tc.x + tOffset, y: tc.y + (dy >= 0 ? -h(tn) / 2 : h(tn) / 2) };
+    const sourcePos = horiz
+      ? (dx >= 0 ? Position.Right : Position.Left)
+      : (dy >= 0 ? Position.Bottom : Position.Top);
+    const targetPos = horiz
+      ? (dx >= 0 ? Position.Left : Position.Right)
+      : (dy >= 0 ? Position.Top : Position.Bottom);
     const [p, lx, ly] = getBezierPath({
       sourceX: p1.x,
       sourceY: p1.y,
-      sourcePosition: horiz ? (dx >= 0 ? Position.Right : Position.Left) : dy >= 0 ? Position.Bottom : Position.Top,
+      sourcePosition: sourcePos,
       targetX: p2.x,
       targetY: p2.y,
-      targetPosition: horiz ? (dx >= 0 ? Position.Left : Position.Right) : dy >= 0 ? Position.Top : Position.Bottom,
+      targetPosition: targetPos,
     });
     path = p;
     labelX = lx;
@@ -598,7 +644,13 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
   const tw = text ? text.length * 6 + 10 : 0;
   return (
     <g>
-      <BaseEdge id={id} path={path} {...(markerEnd ? { markerEnd } : {})} {...(markerStart ? { markerStart } : {})} style={style} />
+      <BaseEdge
+        id={id}
+        path={path}
+        {...(markerEnd ? { markerEnd } : {})}
+        {...(markerStart ? { markerStart } : {})}
+        style={style}
+      />
       {text && (
         <>
           <rect
@@ -609,7 +661,13 @@ function FloatingEdge({ id, source, target, label, markerEnd, markerStart, style
             height={16}
             rx={3}
           />
-          <text className="react-flow__edge-text" x={labelX} y={labelY} textAnchor="middle" dominantBaseline="central">
+          <text
+            className="react-flow__edge-text"
+            x={labelX}
+            y={labelY}
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
             {text}
           </text>
         </>
