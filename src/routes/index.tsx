@@ -342,7 +342,7 @@ const nodeWidth = (node: Node<CardData>) => node.measured?.width ?? (node.data.e
 const nodeHeight = (node: Node<CardData>) => node.measured?.height ?? NODE_H;
 
 
-function compute_square_bounds_from_corners(
+export function compute_square_bounds_from_corners(
   corners: { x: number; y: number }[],
 ) {
   const xs = corners.map((p) => p.x);
