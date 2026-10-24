@@ -437,6 +437,20 @@ function SetOutlines({
   );
 }
 
+function calculate_offset_for_anchor(
+  index: number,
+  count: number,
+  dimension: number,
+): number {
+  if (count <= 1) {
+    return 0;
+  }
+  const maxSpan = dimension * 0.7;
+  const step = Math.min(24, maxSpan / (count - 1));
+  const centeredIndex = index - (count - 1) / 2;
+  return centeredIndex * step;
+}
+
 // Floating edge. When the layered layout has routed this edge through dummy
 // lanes (and both endpoints are still where the layout put them), the line
 // follows those lanes: horizontal runs with smooth vertical connectors, so
