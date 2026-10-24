@@ -59,6 +59,32 @@ export function compute_square_bounds_from_corners(
   return { left, right, top, bottom, size };
 }
 
+export function collect_corners_for_real_members(
+  realIds: string[],
+  slots: Map<string, Slot>,
+  colX: number[],
+  colW: number[],
+  y: Map<string, number>,
+  top: number,
+): Point[] {
+  const corners: Point[] = [];
+  for (const id of realIds) {
+    const slot = slots.get(id)!;
+    const originX = colX[slot.layer]!;
+    const laneW = colW[slot.layer]!;
+    const offset = (laneW - slot.width) / 2;
+    const nodeX = originX + offset;
+    const nodeY = y.get(id)! - top;
+    corners.push(
+      { x: nodeX - SET_MARGIN, y: nodeY - SET_MARGIN },
+      { x: nodeX + slot.width + SET_MARGIN, y: nodeY - SET_MARGIN },
+      { x: nodeX + slot.width + SET_MARGIN, y: nodeY + slot.height + SET_MARGIN },
+      { x: nodeX - SET_MARGIN, y: nodeY + slot.height + SET_MARGIN },
+    );
+  }
+  return corners;
+}
+
 // One full layout pass. Long edges reserve a dummy lane in every column they
 // span; dummyBands chooses per edge whether those lanes sit in the source's
 // set band (vertical jump at the target end) or the target's band (jump at
