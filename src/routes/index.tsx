@@ -478,6 +478,16 @@ function sort_edges_by_peer_coordinate(
   return [...edges].sort(comparator);
 }
 
+function record_indices_for_edge_group(
+  sortedGroup: Edge[],
+  metaMap: Map<string, { index: number; count: number }>,
+): void {
+  const total = sortedGroup.length;
+  sortedGroup.forEach((edge, index) => {
+    metaMap.set(edge.id, { index, count: total });
+  });
+}
+
 // Floating edge. When the layered layout has routed this edge through dummy
 // lanes (and both endpoints are still where the layout put them), the line
 // follows those lanes: horizontal runs with smooth vertical connectors, so
