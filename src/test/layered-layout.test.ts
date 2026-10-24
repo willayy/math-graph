@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { layeredLayout, type LayoutNode } from "@/lib/layered-layout";
+import {
+  layeredLayout,
+  type LayoutNode,
+  type LayoutEdge,
+  compute_square_bounds_from_corners,
+  SET_MARGIN,
+  SET_GAP,
+} from "@/lib/layered-layout";
 
 const node = (id: string, kind: string, height = 155, set = "book"): LayoutNode => ({ id, kind, height, width: 260, set });
 const rank = (set: string | null) => set === "book" ? 0 : 1;
@@ -60,5 +67,43 @@ describe("Layered graph layout", () => {
     const a = result.positions["a"], b = result.positions["b"], t = result.positions["t"], u = result.positions["u"];
     if (!a || !b || !t || !u) throw new Error("Missing layout position");
     expect((a.y - b.y) * (u.y - t.y)).toBeGreaterThan(0);
+  });
+
+  it("prevents set square bounding boxes from intersecting", () => {
+    const nodes: LayoutNode[] = [
+      { id: "s1_a", kind: "axiom", height: 155, width: 260, set: "set1" },
+      { id: "s1_b", kind: "theorem", height: 155, width: 260, set: "set1" },
+      { id: "s2_a", kind: "axiom", height: 155, width: 260, set: "set2" },
+      { id: "s2_b", kind: "theorem", height: 155, width: 260, set: "set2" },
+    ];
+    const edges: LayoutEdge[] = [
+      { id: "e1", source: "s1_a", target: "s1_b" },
+      { id: "e2", source: "s2_a", target: "s2_b" },
+    ];
+    const rankFn = (s: string | null) => (s === "set1" ? 0 : 1);
+    const result = layeredLayout(nodes, edges, rankFn);
+    const set1Nodes = [nodes[0]!, nodes[1]!];
+    const set2Nodes = [nodes[2]!, nodes[3]!];
+    const corners1 = set1Nodes.flatMap((n) => {
+      const pos = result.positions[n.id]!;
+      return [
+        { x: pos.x - SET_MARGIN, y: pos.y - SET_MARGIN },
+        { x: pos.x + n.width + SET_MARGIN, y: pos.y - SET_MARGIN },
+        { x: pos.x + n.width + SET_MARGIN, y: pos.y + n.height + SET_MARGIN },
+        { x: pos.x - SET_MARGIN, y: pos.y + n.height + SET_MARGIN },
+      ];
+    });
+    const corners2 = set2Nodes.flatMap((n) => {
+      const pos = result.positions[n.id]!;
+      return [
+        { x: pos.x - SET_MARGIN, y: pos.y - SET_MARGIN },
+        { x: pos.x + n.width + SET_MARGIN, y: pos.y - SET_MARGIN },
+        { x: pos.x + n.width + SET_MARGIN, y: pos.y + n.height + SET_MARGIN },
+        { x: pos.x - SET_MARGIN, y: pos.y + n.height + SET_MARGIN },
+      ];
+    });
+    const box1 = compute_square_bounds_from_corners(corners1);
+    const box2 = compute_square_bounds_from_corners(corners2);
+    expect(box2.top).toBeGreaterThanOrEqual(box1.bottom + SET_GAP);
   });
 });
