@@ -415,12 +415,8 @@ function SetOutlines({
       );
     }
     if (!corners.length) return null;
-    const hull = setHull(corners);
-    const left = Math.min(...hull.map((p) => p.x));
-    const right = Math.max(...hull.map((p) => p.x));
-    const top = Math.min(...hull.map((p) => p.y));
-    const bottom = Math.max(...hull.map((p) => p.y));
-    return { ...set, hull, left, right, top, bottom };
+    const bounds = compute_square_bounds_from_corners(corners);
+    return { ...set, ...bounds };
   }).filter((outline): outline is NonNullable<typeof outline> => outline !== null), [sets, members, visible, nodeById]);
 
   return (
@@ -428,8 +424,11 @@ function SetOutlines({
       {outlines.map((set) => (
         <div key={set.id} className="pointer-events-none absolute left-0 top-0">
           <svg className="absolute left-0 top-0 overflow-visible" width="1" height="1" aria-hidden="true">
-            <path
-              d={`M ${set.hull.map((p) => `${p.x} ${p.y}`).join(" L ")} Z`}
+            <rect
+              x={set.left}
+              y={set.top}
+              width={set.size}
+              height={set.size}
               fill="none"
               stroke="var(--muted-foreground)"
               strokeWidth={Math.max(2, 1.1 / zoom)}
