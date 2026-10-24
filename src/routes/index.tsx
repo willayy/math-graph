@@ -364,25 +364,6 @@ function compute_square_bounds_from_corners(
   return { left, right, top, bottom, size };
 }
 
-// A convex outline follows the actual member boxes instead of enclosing unrelated
-// nodes in a large rectangular bounding box.
-function setHull(points: { x: number; y: number }[]) {
-  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (a: typeof points[number], b: typeof points[number], c: typeof points[number]) =>
-    (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-  const lower: typeof points = [];
-  for (const p of sorted) {
-    while (lower.length > 1 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop();
-    lower.push(p);
-  }
-  const upper: typeof points = [];
-  for (const p of sorted.reverse()) {
-    while (upper.length > 1 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  return lower.slice(0, -1).concat(upper.slice(0, -1));
-}
-
 
 function SetOutlines({
   nodes,
