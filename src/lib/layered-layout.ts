@@ -37,6 +37,28 @@ export type SquareBounds = {
   size: number;
 };
 
+export function compute_square_bounds_from_corners(
+  corners: Point[],
+): SquareBounds {
+  const xs = corners.map((p) => p.x);
+  const ys = corners.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  const size = Math.max(spanX, spanY);
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const half = size / 2;
+  const left = centerX - half;
+  const right = centerX + half;
+  const top = centerY - half;
+  const bottom = centerY + half;
+  return { left, right, top, bottom, size };
+}
+
 // One full layout pass. Long edges reserve a dummy lane in every column they
 // span; dummyBands chooses per edge whether those lanes sit in the source's
 // set band (vertical jump at the target end) or the target's band (jump at
