@@ -465,6 +465,19 @@ function group_edges_by_endpoint(
   return grouped;
 }
 
+function sort_edges_by_peer_coordinate(
+  edges: Edge[],
+  peerKey: "source" | "target",
+  nodePositions: Map<string, { y: number }>,
+): Edge[] {
+  const comparator = (a: Edge, b: Edge) => {
+    const posA = nodePositions.get(a[peerKey])?.y ?? 0;
+    const posB = nodePositions.get(b[peerKey])?.y ?? 0;
+    return posA - posB;
+  };
+  return [...edges].sort(comparator);
+}
+
 // Floating edge. When the layered layout has routed this edge through dummy
 // lanes (and both endpoints are still where the layout put them), the line
 // follows those lanes: horizontal runs with smooth vertical connectors, so
