@@ -524,6 +524,19 @@ function assign_anchors_to_edges(
   });
 }
 
+function format_curve_segment_for_points(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): string {
+  const diffY = Math.abs(b.y - a.y);
+  if (diffY < 0.5) {
+    return `L ${b.x} ${b.y}`;
+  }
+  const midX1 = a.x + (b.x - a.x) / 2;
+  const midX2 = b.x - (b.x - a.x) / 2;
+  return `C ${midX1} ${a.y}, ${midX2} ${b.y}, ${b.x} ${b.y}`;
+}
+
 // Floating edge. When the layered layout has routed this edge through dummy
 // lanes (and both endpoints are still where the layout put them), the line
 // follows those lanes: horizontal runs with smooth vertical connectors, so
