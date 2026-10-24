@@ -13,6 +13,7 @@ void instance.init({
   resources,
   lng: "en",
   fallbackLng: "en",
+  initImmediate: false,
   interpolation: {
     escapeValue: false,
   },
