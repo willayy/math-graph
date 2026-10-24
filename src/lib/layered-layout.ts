@@ -85,6 +85,13 @@ export function collect_corners_for_real_members(
   return corners;
 }
 
+export type BandVerticalBounds = {
+  hasRealNodes: boolean;
+  itemHeight: number;
+  relSquareTop: number;
+  relSquareBottom: number;
+};
+
 // One full layout pass. Long edges reserve a dummy lane in every column they
 // span; dummyBands chooses per edge whether those lanes sit in the source's
 // set band (vertical jump at the target end) or the target's band (jump at
