@@ -316,7 +316,8 @@ function layoutOnce(
   // Rows: each band is laid out independently, then stacked vertically.
   const y = new Map<string, number>(); // top edge
   const bands = [...new Set([...slots.values()].map((s) => s.band))].sort((a, b) => a - b);
-  let bandTop = 0;
+  let prevSquareBottom: number | null = null;
+  let prevItemBottom = 0;
   for (const band of bands) {
     const columns = order.map((list) => list.filter((id) => slots.get(id)!.band === band));
     // Start stacked from 0.
@@ -360,10 +361,28 @@ function layoutOnce(
       place(columns[l]!, (id) => avg(id, [...(up.get(id) ?? []), ...(down.get(id) ?? [])]));
     const members = columns.flat();
     if (!members.length) continue;
-    const top = Math.min(...members.map((id) => y.get(id)!));
-    const bottom = Math.max(...members.map((id) => y.get(id)! + slots.get(id)!.height));
-    for (const id of members) y.set(id, y.get(id)! - top + bandTop);
-    bandTop += bottom - top + BAND_GAP;
+    const memberYs = members.map((id) => y.get(id)!);
+    const top = Math.min(...memberYs);
+    const bounds = compute_vertical_bounds_for_band(
+      members,
+      slots,
+      colX,
+      colW,
+      y,
+      top,
+    );
+    const bandTop = calculate_top_for_next_band(
+      bounds,
+      prevSquareBottom,
+      prevItemBottom,
+    );
+    shift_band_members_to_top(members, y, top, bandTop);
+    prevItemBottom = bandTop + bounds.itemHeight;
+    prevSquareBottom = update_square_bottom_for_band(
+      bounds,
+      bandTop,
+      prevSquareBottom,
+    );
   }
 
   const positions: Record<string, Point> = {};
