@@ -1364,11 +1364,19 @@ function Index() {
       ? graph.edges.filter((e) => visible.has(e.source) && visible.has(e.target))
       : graph.edges;
     if (canonicalOnly || trace) list = list.filter((e) => strongEdges.includes(e.id));
-    // Lane points from the layered layout; the edge only follows them while
-    // both endpoints are still where the layout put them.
+    const nodePositions = new Map<string, { y: number }>();
+    nodes.forEach((n) => {
+      nodePositions.set(n.id, { y: n.position.y });
+    });
+    list = assign_anchors_to_edges(list, nodePositions);
     list = list.map((e) => ({
       ...e,
-      data: { ...e.data, route: layout?.routes[e.id], routeFrom: layout?.positions[e.source], routeTo: layout?.positions[e.target] },
+      data: {
+        ...e.data,
+        route: layout?.routes[e.id],
+        routeFrom: layout?.positions[e.source],
+        routeTo: layout?.positions[e.target],
+      },
     }));
     const kindOf = (id: string) => graph.nodes.find((n) => n.id === id)?.data.item.kind;
     return list.map((e) => {
@@ -1394,7 +1402,7 @@ function Index() {
         },
       };
     });
-  }, [graph, visible, strongEdges, canonicalOnly, trace, layout]);
+  }, [graph, visible, strongEdges, canonicalOnly, trace, layout, nodes]);
 
   const saveLayout = (ns: Node<CardData>[]) => {
     const layout: Record<string, { x: number; y: number; pinned: boolean }> = {};
